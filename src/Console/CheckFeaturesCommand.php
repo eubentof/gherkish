@@ -9,7 +9,7 @@ use Illuminate\Console\Command;
 
 class CheckFeaturesCommand extends Command
 {
-    protected $signature = 'features:check '
+    protected $signature = 'gherkish:check '
         .'{--dir= : Limit the check to feature files inside this directory}'
         .'{--feature= : Only check a specific feature file}'
         .'{--file= : Alias for --feature}'

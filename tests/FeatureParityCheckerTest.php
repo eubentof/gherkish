@@ -334,7 +334,7 @@ describe('FeatureParityChecker discovery', function () {
     });
 });
 
-describe('features:check command', function () {
+describe('gherkish:check command', function () {
     it('should register the package command and report successful parity', function () {
         /** @Given a feature and test with matching scenarios and steps */
         $fixture = writeFeatureParityFixture(
@@ -358,7 +358,7 @@ PHP
         );
 
         /** @When the feature parity command checks their directory */
-        $command = $this->artisan('features:check', ['--dir' => $fixture['dir']]);
+        $command = $this->artisan('gherkish:check', ['--dir' => $fixture['dir']]);
 
         /** @Then the command reports success */
         $command
@@ -371,7 +371,7 @@ PHP
         $missingDirectory = 'missing-gherkish-directory';
 
         /** @When the feature parity command checks that directory */
-        $command = $this->artisan('features:check', ['--dir' => $missingDirectory]);
+        $command = $this->artisan('gherkish:check', ['--dir' => $missingDirectory]);
 
         /** @Then the command reports a configuration failure */
         $command

@@ -1,7 +1,8 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "filipebento/gherkish",
+    "name": "eubentof/gherkish",
     "description": "Keep Gherkin scenarios and Pest tests in sync in Laravel applications.",
+    "homepage": "https://github.com/eubentof/gherkish",
     "keywords": [
         "gherkin",
         "laravel",
@@ -41,6 +42,10 @@
                 "Gherkish\\GherkishServiceProvider"
             ]
         }
+    },
+    "support": {
+        "issues": "https://github.com/eubentof/gherkish/issues",
+        "source": "https://github.com/eubentof/gherkish"
     },
     "config": {
         "allow-plugins": {
