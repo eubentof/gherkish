@@ -63,3 +63,23 @@ Feature: FeatureParityChecker parsing
     Given a feature directory that does not exist
     When the feature parity command checks that directory
     Then the command reports a configuration failure
+
+  Scenario: should return rows from a single examples block without a label
+    Given a scenario outline with one examples block
+    When the examples dataset is requested without a label
+    Then every example row is returned as an associative array
+
+  Scenario: should select an examples block by label
+    Given a scenario outline with multiple labeled examples blocks
+    When an examples dataset is requested by label
+    Then only rows from the matching examples block are returned
+
+  Scenario: should require a label for multiple examples blocks
+    Given a scenario outline with multiple examples blocks
+    When the examples dataset is requested without a label
+    Then the available labels are reported in the error
+
+  Scenario: should reject an unknown examples label
+    Given a scenario outline with labeled examples blocks
+    When an examples dataset is requested with an unknown label
+    Then the available labels are reported in the error

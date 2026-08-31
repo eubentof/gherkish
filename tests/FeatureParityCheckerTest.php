@@ -1,5 +1,7 @@
 <?php
 
+use Gherkish\Examples\ExampleDatasetResolver;
+use Gherkish\Examples\ExamplesException;
 use Gherkish\FeatureParity\FeatureParityChecker;
 use Gherkish\FeatureParity\FeatureParityResult;
 use Illuminate\Filesystem\Filesystem;
@@ -380,6 +382,85 @@ PHP
     });
 });
 
+describe('Gherkish examples datasets', function () {
+    it('should return rows from a single examples block without a label', function () {
+        /** @Given a scenario outline with one examples block */
+        $fixture = writeFeatureParityFixture(
+            'single-examples-dataset',
+            <<<'FEATURE'
+Feature: Login
+  Scenario Outline: User logs in
+    Given a user with email "<email>"
+    When they log in with password "<password>"
+    Then the result should be "<result>"
+
+    Examples:
+      | email            | password | result  |
+      | john@test.com    | correct  | success |
+      | missing@test.com | anything | failure |
+FEATURE,
+            <<<'PHP'
+<?php
+
+use Gherkish\Gherkish;
+
+return Gherkish::examples();
+PHP,
+        );
+
+        /** @When the examples dataset is requested without a label */
+        $rows = require $fixture['testPath'];
+
+        /** @Then every example row is returned as an associative array */
+        expect($rows)->toBe([
+            ['email' => 'john@test.com', 'password' => 'correct', 'result' => 'success'],
+            ['email' => 'missing@test.com', 'password' => 'anything', 'result' => 'failure'],
+        ]);
+    });
+
+    it('should select an examples block by label', function () {
+        /** @Given a scenario outline with multiple labeled examples blocks */
+        $fixture = writeLoginExamplesFixture('labeled-examples-dataset');
+
+        /** @When an examples dataset is requested by label */
+        $rows = (new ExampleDatasetResolver)->resolve($fixture['testPath'], 4, 'Invalid credentials');
+
+        /** @Then only rows from the matching examples block are returned */
+        expect($rows)->toBe([
+            ['email' => 'john@test.com', 'password' => 'wrong', 'result' => 'failure'],
+            ['email' => 'jane@test.com', 'password' => 'wrong', 'result' => 'failure'],
+        ]);
+    });
+
+    it('should require a label for multiple examples blocks', function () {
+        /** @Given a scenario outline with multiple examples blocks */
+        $fixture = writeLoginExamplesFixture('required-examples-label');
+
+        /** @When the examples dataset is requested without a label */
+        $resolve = fn () => (new ExampleDatasetResolver)->resolve($fixture['testPath'], 4);
+
+        /** @Then the available labels are reported in the error */
+        expect($resolve)->toThrow(
+            ExamplesException::class,
+            'Pass one of these labels to Gherkish::examples(): "Valid credentials", "Invalid credentials"',
+        );
+    });
+
+    it('should reject an unknown examples label', function () {
+        /** @Given a scenario outline with labeled examples blocks */
+        $fixture = writeLoginExamplesFixture('unknown-examples-label');
+
+        /** @When an examples dataset is requested with an unknown label */
+        $resolve = fn () => (new ExampleDatasetResolver)->resolve($fixture['testPath'], 4, 'Missing label');
+
+        /** @Then the available labels are reported in the error */
+        expect($resolve)->toThrow(
+            ExamplesException::class,
+            'Available labels: "Valid credentials", "Invalid credentials"',
+        );
+    });
+});
+
 function writeFeatureParityFixture(string $case, string $featureContent, ?string $testContent = null): array
 {
     $filesystem = new Filesystem;
@@ -430,4 +511,43 @@ function runFeatureParityFixture(string $dir): FeatureParityResult
     FeatureParityChecker::resetSelection();
 
     return $result;
+}
+
+function writeLoginExamplesFixture(string $case): array
+{
+    return writeFeatureParityFixture(
+        $case,
+        <<<'FEATURE'
+Feature: Login
+  Scenario Outline: User registers
+    Given a new user with email "<email>"
+    When they register
+    Then registration succeeds
+
+    Examples:
+      | email         |
+      | new@test.com  |
+
+  Scenario Outline: User logs in
+    Given a user with email "<email>"
+    When they log in with password "<password>"
+    Then the result should be "<result>"
+
+    Examples: Valid credentials
+      | email         | password | result  |
+      | john@test.com | correct  | success |
+      | jane@test.com | correct  | success |
+
+    Examples: Invalid credentials
+      | email         | password | result  |
+      | john@test.com | wrong    | failure |
+      | jane@test.com | wrong    | failure |
+FEATURE,
+        <<<'PHP'
+<?php
+
+it('User logs in', function (string $email, string $password, string $result) {
+})->with(Gherkish::examples('Valid credentials'));
+PHP,
+    );
 }
