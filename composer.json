@@ -1,0 +1,53 @@
+{
+    "$schema": "https://getcomposer.org/schema.json",
+    "name": "filipebento/gherkish",
+    "description": "Keep Gherkin scenarios and Pest tests in sync in Laravel applications.",
+    "keywords": [
+        "gherkin",
+        "laravel",
+        "pest",
+        "testing"
+    ],
+    "license": "MIT",
+    "type": "library",
+    "require": {
+        "php": "^8.2",
+        "illuminate/console": "^11.0|^12.0",
+        "illuminate/support": "^11.0|^12.0"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.24",
+        "orchestra/testbench": "^9.0|^10.0",
+        "pestphp/pest": "^3.0|^4.0",
+        "pestphp/pest-plugin-laravel": "^3.0|^4.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Gherkish\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Gherkish\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "pest",
+        "format": "pint"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Gherkish\\GherkishServiceProvider"
+            ]
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        },
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
