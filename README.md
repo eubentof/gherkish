@@ -46,10 +46,19 @@ The Pest description and step docblocks must match:
 ```php
 it('should create a user', function () {
     /** @Given valid user details */
+    $details = ['name' => 'Ada'];
+
     /** @When the user is created */
+    $user = User::create($details);
+
     /** @Then the user is persisted */
+    expect($user->exists)->toBeTrue();
 });
 ```
+
+Each step docblock must have executable PHP code on the line directly below
+it. Another step docblock, a regular comment, or a blank line is not considered
+an implementation and causes `gherkish:check` to fail.
 
 ## Scenario Outline datasets
 

@@ -8,6 +8,7 @@ final class TestBlock
 {
     /**
      * @param  StepDoc[]  $stepComments
+     * @param  StepDoc[]  $unimplementedStepComments
      */
     public function __construct(
         public string $name,
@@ -15,5 +16,6 @@ final class TestBlock
         public array $stepComments,
         public string $filePath,
         public int $line,
+        public array $unimplementedStepComments = [],
     ) {}
 }

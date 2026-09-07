@@ -514,6 +514,39 @@ final class FeatureParityChecker
             ));
         }
 
+        $scenarioStepSignatures = array_flip(self::scenarioStepSequence($scenario));
+        $unimplementedStepComments = [];
+        foreach ($matchingTests as $test) {
+            foreach ($test->unimplementedStepComments as $step) {
+                $signature = self::normalizeStepSignature($step->keyword, $step->text);
+                if (! isset($scenarioStepSignatures[$signature])) {
+                    continue;
+                }
+
+                $unimplementedStepComments[] = [$test, $step];
+            }
+        }
+
+        if ($unimplementedStepComments !== []) {
+            $violations = array_map(
+                static fn (array $violation): string => sprintf(
+                    '- %s %s (%s:%d)',
+                    $violation[1]->keyword,
+                    $violation[1]->text,
+                    self::relativeTestPath($violation[0]->filePath),
+                    $violation[1]->line,
+                ),
+                $unimplementedStepComments,
+            );
+
+            throw new FeatureParityException(sprintf(
+                "Failed asserting that scenario \"%s\" (%s) is covered: every Pest step docblock must have executable PHP code directly below it.\n%s",
+                $scenario->title,
+                $scenarioLocation,
+                implode("\n", $violations),
+            ));
+        }
+
         $matched = self::findExactStepMatch($scenario, $matchingTests);
 
         if ($matched === null) {
@@ -553,8 +586,9 @@ final class FeatureParityChecker
             $start = $match[0][1];
             $body = self::extractStatement($content, $start);
             $startLine = self::offsetToLineNumber($content, $start);
-            $stepComments = self::extractStepCommentsFromText($body, $startLine);
-            $tests[] = new TestBlock($name, $body, $stepComments, $path, $startLine);
+            $unimplementedStepComments = [];
+            $stepComments = self::extractStepCommentsFromText($body, $startLine, $unimplementedStepComments);
+            $tests[] = new TestBlock($name, $body, $stepComments, $path, $startLine, $unimplementedStepComments);
         }
 
         return $tests;
@@ -656,8 +690,11 @@ final class FeatureParityChecker
     /**
      * @return StepDoc[]
      */
-    private static function extractStepCommentsFromText(string $text, int $initialLine = 1): array
-    {
+    private static function extractStepCommentsFromText(
+        string $text,
+        int $initialLine = 1,
+        array &$unimplementedStepComments = [],
+    ): array {
         $pattern = '/\/\*\*(?P<body>.*?)\*\//s';
         preg_match_all($pattern, $text, $matches, PREG_SET_ORDER | PREG_OFFSET_CAPTURE);
 
@@ -681,10 +718,28 @@ final class FeatureParityChecker
             $offset = $match[0][1] ?? 0;
             $line = $initialLine + substr_count(substr($text, 0, $offset), "\n");
 
-            $comments[] = new StepDoc($keyword, $body, $line);
+            $step = new StepDoc($keyword, $body, $line);
+            $comments[] = $step;
+
+            $comment = $match[0][0] ?? '';
+            if (! self::hasExecutableCodeDirectlyBelow($text, $offset, strlen($comment))) {
+                $unimplementedStepComments[] = $step;
+            }
         }
 
         return $comments;
+    }
+
+    private static function hasExecutableCodeDirectlyBelow(string $text, int $offset, int $length): bool
+    {
+        $afterComment = substr($text, $offset + $length);
+        if (! preg_match('/^[^\r\n]*(?:\r\n|\r|\n)([^\r\n]*)/', $afterComment, $match)) {
+            return false;
+        }
+
+        $nextLine = trim($match[1]);
+
+        return $nextLine !== '' && ! preg_match('~^(?://|#|/\*|\*|\*/)~', $nextLine);
     }
 
     private static function cleanupStepCommentBody(string $body): string

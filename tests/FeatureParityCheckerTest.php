@@ -293,6 +293,48 @@ PHP
         expect($scenario['coverage']['missing'])->toBe([]);
     });
 
+    it('should reject step docblocks without executable code directly below them', function () {
+        /** @Given a Pest test contains step docblocks followed by another step, a comment, or a blank line */
+        $fixture = writeFeatureParityFixture(
+            'unimplemented-step-docblocks',
+            <<<'FEATURE'
+Feature: Step implementations
+  Scenario: invalid step implementations
+    Given a step followed by another step docblock
+    When a step is followed by executable code
+    And a step followed by a regular comment
+    Then a step followed by a blank line
+FEATURE,
+            <<<'PHP'
+<?php
+
+test('invalid step implementations', function () {
+    /** @Given a step followed by another step docblock */
+    /** @When a step is followed by executable code */
+    expect(true)->toBeTrue();
+    /** @And a step followed by a regular comment */
+    // This comment cannot implement the step.
+    expect(true)->toBeTrue();
+    /** @Then a step followed by a blank line */
+
+    expect(true)->toBeTrue();
+});
+PHP
+        );
+
+        /** @When the checker runs for that Pest test */
+        $result = runFeatureParityFixture($fixture['dir']);
+
+        /** @Then every step docblock without executable code directly below it should be reported */
+        expect($result->errors)->toHaveCount(1);
+        expect($result->errors[0]['message'])
+            ->toContain('every Pest step docblock must have executable PHP code directly below it')
+            ->toContain('Given a step followed by another step docblock')
+            ->toContain('And a step followed by a regular comment')
+            ->toContain('Then a step followed by a blank line')
+            ->not->toContain('- When a step is followed by executable code');
+    });
+
     it('should flag missing paired test files', function () {
         /** @Given a feature file without a corresponding Pest test file */
         $fixture = writeFeatureParityFixture(
@@ -353,8 +395,11 @@ FEATURE,
 
 it('should run through Artisan', function () {
     /** @Given a mapped command scenario */
+    expect(true)->toBeTrue();
     /** @When the package command runs */
+    expect(true)->toBeTrue();
     /** @Then it exits successfully */
+    expect(true)->toBeTrue();
 });
 PHP
         );

@@ -44,6 +44,11 @@ Feature: FeatureParityChecker parsing
     When the checker snapshots that feature directory
     Then the outline steps should be covered exactly once
 
+  Scenario: should reject step docblocks without executable code directly below them
+    Given a Pest test contains step docblocks followed by another step, a comment, or a blank line
+    When the checker runs for that Pest test
+    Then every step docblock without executable code directly below it should be reported
+
   Scenario: should flag missing paired test files
     Given a feature file without a corresponding Pest test file
     When the checker runs
