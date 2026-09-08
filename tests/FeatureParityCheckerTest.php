@@ -23,6 +23,8 @@ afterEach(function () {
     unset($_ENV['FEATURE_PARITY_CHECK_OUTLINE_DATASETS']);
     putenv('FEATURE_PARITY_CHECK_UNMAPPED_TESTS');
     unset($_ENV['FEATURE_PARITY_CHECK_UNMAPPED_TESTS']);
+    putenv('FEATURE_PARITY_STRICT');
+    unset($_ENV['FEATURE_PARITY_STRICT']);
     FeatureParityChecker::resetSelection();
     $this->filesystem->deleteDirectory($this->fixtureRoot);
 });
@@ -492,6 +494,77 @@ describe('gherkish:check command', function () {
             ->assertSuccessful();
     });
 
+    it('should leave strict scenario structure validation disabled by default', function () {
+        /** @Given mapped scenarios that do not contain every Given When and Then phase */
+        $fixture = writeFeatureParityFixture('strict-scenario-structure');
+
+        /** @When the checker runs without strict scenario structure validation */
+        $result = runFeatureParityFixture($fixture['dir']);
+
+        /** @Then the structurally incomplete scenarios should remain covered */
+        expect($result->errors)->toBe([]);
+        expect($result->successes)->toHaveCount(4);
+    });
+
+    it('should accept complete scenario structure in strict mode', function () {
+        /** @Given mapped scenarios and outlines containing Given When and Then phases */
+        $fixture = writeFeatureParityFixture('strict-scenario-structure');
+
+        /** @And additional steps that inherit an established phase */
+        expect(file_get_contents($fixture['featurePath']))
+            ->toContain('And another setup step')
+            ->toContain('But another action is also performed');
+
+        /** @When the checker runs with strict scenario structure validation */
+        $result = runFeatureParityFixture($fixture['dir'], strict: true);
+
+        /** @Then every structurally complete scenario should remain covered */
+        expect($result->successes)->toContain('Strict scenario structure -> complete scenario structure');
+    });
+
+    it('should reject incomplete scenario structure in strict mode', function () {
+        /** @Given mapped scenarios and outlines missing Given When or Then phases */
+        $fixture = writeFeatureParityFixture('strict-scenario-structure');
+
+        /** @And leading secondary keywords without an established phase */
+        expect(file_get_contents($fixture['featurePath']))->toContain('And an orphaned secondary setup step');
+
+        /** @When the checker runs with strict scenario structure validation */
+        $result = runFeatureParityFixture($fixture['dir'], strict: true);
+
+        /** @Then each incomplete structure should report its missing phases and feature location */
+        expect($result->errors)->toHaveCount(3);
+        expect($result->errors[0]['message'])
+            ->toContain('is missing the following required phase: Given')
+            ->toContain('tests/.feature-parity-fixtures/strict-scenario-structure/Fixture.feature:9');
+        expect($result->errors[1]['message'])
+            ->toContain('is missing the following required phase: When')
+            ->toContain('tests/.feature-parity-fixtures/strict-scenario-structure/Fixture.feature:14');
+        expect($result->errors[2]['message'])
+            ->toContain('Scenario Outline "outline without an effective Then phase"')
+            ->toContain('is missing the following required phase: Then')
+            ->toContain('tests/.feature-parity-fixtures/strict-scenario-structure/Fixture.feature:19');
+    });
+
+    it('should keep strict mode independent from other optional checks', function () {
+        /** @Given strict scenarios with unchecked outline datasets and unmapped Pest tests */
+        $fixture = writeFeatureParityFixture('strict-independent-checks');
+
+        /** @When the checker runs with only strict scenario structure validation */
+        $command = $this->artisan('gherkish:check', [
+            '--dir' => $fixture['dir'],
+            '--strict' => true,
+            '--descriptive' => true,
+            '--no-ansi' => true,
+        ]);
+
+        /** @Then outline dataset and reverse mapping validation should remain disabled */
+        $command
+            ->expectsOutputToContain('Examples (validation disabled)')
+            ->doesntExpectOutputToContain('unmapped Pest test')
+            ->assertSuccessful();
+    });
+
     it('should report unmapped Pest tests while honoring the mapping ignore comment', function () {
         /** @Given a selected directory contains mapped, unmapped, and mapping-ignored tests */
         $fixture = writeFeatureParityFixture('unmapped-tests');
@@ -657,13 +730,20 @@ function snapshotFeatureParityFixture(string $dir): array
     return $snapshot;
 }
 
-function runFeatureParityFixture(string $dir, bool $checkOutlineDatasets = false): FeatureParityResult
-{
+function runFeatureParityFixture(
+    string $dir,
+    bool $checkOutlineDatasets = false,
+    bool $strict = false,
+): FeatureParityResult {
     putenv('FEATURE_PARITY_DIR='.$dir);
     $_ENV['FEATURE_PARITY_DIR'] = $dir;
     if ($checkOutlineDatasets) {
         putenv('FEATURE_PARITY_CHECK_OUTLINE_DATASETS=1');
         $_ENV['FEATURE_PARITY_CHECK_OUTLINE_DATASETS'] = '1';
+    }
+    if ($strict) {
+        putenv('FEATURE_PARITY_STRICT=1');
+        $_ENV['FEATURE_PARITY_STRICT'] = '1';
     }
     FeatureParityChecker::resetSelection();
 
@@ -675,6 +755,8 @@ function runFeatureParityFixture(string $dir, bool $checkOutlineDatasets = false
     unset($_ENV['FEATURE_PARITY_CHECK_OUTLINE_DATASETS']);
     putenv('FEATURE_PARITY_CHECK_UNMAPPED_TESTS');
     unset($_ENV['FEATURE_PARITY_CHECK_UNMAPPED_TESTS']);
+    putenv('FEATURE_PARITY_STRICT');
+    unset($_ENV['FEATURE_PARITY_STRICT']);
     FeatureParityChecker::resetSelection();
 
     return $result;

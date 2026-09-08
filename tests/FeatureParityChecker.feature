@@ -129,6 +129,28 @@ Feature: FeatureParityChecker parsing
     When the checker runs without reverse test mapping validation
     Then the unmatched Pest test should not fail the check
 
+  Scenario: should leave strict scenario structure validation disabled by default
+    Given mapped scenarios that do not contain every Given When and Then phase
+    When the checker runs without strict scenario structure validation
+    Then the structurally incomplete scenarios should remain covered
+
+  Scenario: should accept complete scenario structure in strict mode
+    Given mapped scenarios and outlines containing Given When and Then phases
+    And additional steps that inherit an established phase
+    When the checker runs with strict scenario structure validation
+    Then every structurally complete scenario should remain covered
+
+  Scenario: should reject incomplete scenario structure in strict mode
+    Given mapped scenarios and outlines missing Given When or Then phases
+    And leading secondary keywords without an established phase
+    When the checker runs with strict scenario structure validation
+    Then each incomplete structure should report its missing phases and feature location
+
+  Scenario: should keep strict mode independent from other optional checks
+    Given strict scenarios with unchecked outline datasets and unmapped Pest tests
+    When the checker runs with only strict scenario structure validation
+    Then outline dataset and reverse mapping validation should remain disabled
+
   Scenario: should report unmapped Pest tests while honoring the mapping ignore comment
     Given a selected directory contains mapped, unmapped, and mapping-ignored tests
     When the checker validates reverse test mappings

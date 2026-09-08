@@ -1,0 +1,14 @@
+<?php
+
+test('strict structure with an unchecked dataset', function () {
+    /** @Given a strict setup for "<state>" */
+    expect(true)->toBeTrue();
+    /** @When the strict action runs */
+    expect(true)->toBeTrue();
+    /** @Then the strict result is accepted */
+    expect(true)->toBeTrue();
+});
+
+test('unmapped test ignored unless reverse mapping is enabled', function () {
+    expect(true)->toBeTrue();
+});

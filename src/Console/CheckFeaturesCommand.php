@@ -17,6 +17,7 @@ class CheckFeaturesCommand extends Command
         .'{--f= : Alias for --feature}'
         .'{--check-outline-datasets : Validate Scenario Outline datasets against their Examples tables}'
         .'{--check-unmapped-tests : Validate that every Pest test maps to a Gherkin scenario}'
+        .'{--strict : Require every Scenario and Scenario Outline to contain Given, When, and Then phases}'
         .'{--descriptive : Show every scenario, step, and Examples table}'
         .'{--snapshot= : Write the coverage snapshot JSON to the given path}';
 
@@ -60,7 +61,7 @@ class CheckFeaturesCommand extends Command
 
     private function captureEnvState(): void
     {
-        foreach (['FEATURE_PARITY_DIR', 'FEATURE_PARITY_FILE', 'FEATURE_PARITY_FEATURE', 'FEATURE_PARITY_CHECK_OUTLINE_DATASETS', 'FEATURE_PARITY_CHECK_UNMAPPED_TESTS', 'FEATURE_PARITY_SNAPSHOT'] as $key) {
+        foreach (['FEATURE_PARITY_DIR', 'FEATURE_PARITY_FILE', 'FEATURE_PARITY_FEATURE', 'FEATURE_PARITY_CHECK_OUTLINE_DATASETS', 'FEATURE_PARITY_CHECK_UNMAPPED_TESTS', 'FEATURE_PARITY_STRICT', 'FEATURE_PARITY_SNAPSHOT'] as $key) {
             $value = getenv($key);
             $this->envBackup[$key] = $value === false ? null : $value;
         }
@@ -95,6 +96,10 @@ class CheckFeaturesCommand extends Command
 
         if ($this->option('check-unmapped-tests')) {
             $this->setEnv('FEATURE_PARITY_CHECK_UNMAPPED_TESTS', '1');
+        }
+
+        if ($this->option('strict')) {
+            $this->setEnv('FEATURE_PARITY_STRICT', '1');
         }
 
         $snapshot = $this->option('snapshot');

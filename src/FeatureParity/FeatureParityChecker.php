@@ -54,7 +54,7 @@ final class FeatureParityChecker
             }
 
             foreach ($feature->scenarios as $scenario) {
-                if (empty($scenario->steps)) {
+                if (empty($scenario->steps) && ! self::shouldCheckStrictScenarioStructure()) {
                     continue;
                 }
 
@@ -67,6 +67,7 @@ final class FeatureParityChecker
                 $testPath = self::relativeTestPath($testPaths[0]);
 
                 try {
+                    self::assertStrictScenarioStructure($feature, $scenario);
                     $matchedTest = self::assertScenarioParity($feature, $scenario, $featureTestPaths);
                     $result->addSuccess(
                         $scenarioLabel,
@@ -756,6 +757,56 @@ final class FeatureParityChecker
             getenv('FEATURE_PARITY_CHECK_UNMAPPED_TESTS') ?: false,
             FILTER_VALIDATE_BOOL,
         );
+    }
+
+    private static function shouldCheckStrictScenarioStructure(): bool
+    {
+        return filter_var(
+            getenv('FEATURE_PARITY_STRICT') ?: false,
+            FILTER_VALIDATE_BOOL,
+        );
+    }
+
+    private static function assertStrictScenarioStructure(FeatureDoc $feature, ScenarioDoc $scenario): void
+    {
+        if (! self::shouldCheckStrictScenarioStructure()) {
+            return;
+        }
+
+        $presentPhases = [];
+        $currentPhase = null;
+
+        foreach ($scenario->steps as $step) {
+            if (in_array($step->keyword, ['Given', 'When', 'Then'], true)) {
+                $currentPhase = $step->keyword;
+            }
+
+            if ($currentPhase !== null) {
+                $presentPhases[$currentPhase] = true;
+            }
+        }
+
+        $missingPhases = array_values(array_filter(
+            ['Given', 'When', 'Then'],
+            static fn (string $phase): bool => ! isset($presentPhases[$phase]),
+        ));
+
+        if ($missingPhases === []) {
+            return;
+        }
+
+        $scenarioType = $scenario->isOutline ? 'Scenario Outline' : 'Scenario';
+        $phaseLabel = count($missingPhases) === 1 ? 'phase' : 'phases';
+
+        throw new FeatureParityException(sprintf(
+            '%s "%s" is missing the following required %s: %s. Feature: %s:%d',
+            $scenarioType,
+            $scenario->title,
+            $phaseLabel,
+            implode(', ', $missingPhases),
+            self::relativeTestPath($feature->path),
+            $scenario->line,
+        ));
     }
 
     /**

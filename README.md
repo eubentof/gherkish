@@ -160,6 +160,22 @@ test('covers an internal implementation detail', function () {
 Feature-to-test scenario and step checks still run normally. The ignore comment
 only skips the opt-in reverse mapping check for that Pest test.
 
+## Strict scenario structure
+
+Use `--strict` to require every `Scenario` and `Scenario Outline` to contain
+effective `Given`, `When`, and `Then` phases. `And` and `But` inherit the phase
+established by the preceding primary keyword, but cannot establish a phase when
+they appear before any `Given`, `When`, or `Then` step.
+
+Strict structure validation is opt-in and independent from
+`--check-outline-datasets` and `--check-unmapped-tests`. It validates only the
+steps declared inside each scenario; `Background` steps are not included in
+this structure check.
+
+```bash
+php artisan gherkish:check --strict
+```
+
 ## Command options
 
 By default, the checker prints one compact status character per scenario: a
@@ -178,6 +194,7 @@ Pass these options to `php artisan gherkish:check`:
 | `--f=tests/Feature/Users/CreateUser.feature` | Short alias for `--feature`. | `FEATURE_PARITY_FILE` or `FEATURE_PARITY_FEATURE` |
 | `--check-outline-datasets` | Validate Scenario Outline datasets against their Examples tables. | `FEATURE_PARITY_CHECK_OUTLINE_DATASETS=1` |
 | `--check-unmapped-tests` | Validate that every Pest test maps to a Gherkin scenario. | `FEATURE_PARITY_CHECK_UNMAPPED_TESTS=1` |
+| `--strict` | Require every Scenario and Scenario Outline to contain effective Given, When, and Then phases. | `FEATURE_PARITY_STRICT=1` |
 | `--descriptive` | Show every scenario, step, and Examples table instead of compact status dots. | — |
 | `--snapshot=storage/app/feature-parity.json` | Write the coverage snapshot as JSON. | `FEATURE_PARITY_SNAPSHOT` |
 

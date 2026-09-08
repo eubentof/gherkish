@@ -1,0 +1,26 @@
+Feature: Strict scenario structure
+  Scenario: complete scenario structure
+    Given an established setup phase
+    And another setup step
+    When an action is performed
+    But another action is also performed
+    Then the result is verified
+
+  Scenario: scenario without an effective Given phase
+    And an orphaned secondary setup step
+    When an action is performed without setup
+    Then the result is still verified
+
+  Scenario: scenario without an effective When phase
+    Given an established setup without an action
+    And another setup-only step
+    Then the setup result is verified
+
+  Scenario Outline: outline without an effective Then phase
+    Given an established outline setup for "<state>"
+    When an outline action is performed
+    But another outline action is performed
+
+    Examples:
+      | state  |
+      | active |

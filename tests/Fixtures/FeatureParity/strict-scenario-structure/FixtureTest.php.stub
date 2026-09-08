@@ -1,0 +1,41 @@
+<?php
+
+test('complete scenario structure', function () {
+    /** @Given an established setup phase */
+    expect(true)->toBeTrue();
+    /** @And another setup step */
+    expect(true)->toBeTrue();
+    /** @When an action is performed */
+    expect(true)->toBeTrue();
+    /** @But another action is also performed */
+    expect(true)->toBeTrue();
+    /** @Then the result is verified */
+    expect(true)->toBeTrue();
+});
+
+test('scenario without an effective Given phase', function () {
+    /** @And an orphaned secondary setup step */
+    expect(true)->toBeTrue();
+    /** @When an action is performed without setup */
+    expect(true)->toBeTrue();
+    /** @Then the result is still verified */
+    expect(true)->toBeTrue();
+});
+
+test('scenario without an effective When phase', function () {
+    /** @Given an established setup without an action */
+    expect(true)->toBeTrue();
+    /** @And another setup-only step */
+    expect(true)->toBeTrue();
+    /** @Then the setup result is verified */
+    expect(true)->toBeTrue();
+});
+
+test('outline without an effective Then phase', function () {
+    /** @Given an established outline setup for "<state>" */
+    expect(true)->toBeTrue();
+    /** @When an outline action is performed */
+    expect(true)->toBeTrue();
+    /** @But another outline action is performed */
+    expect(true)->toBeTrue();
+});

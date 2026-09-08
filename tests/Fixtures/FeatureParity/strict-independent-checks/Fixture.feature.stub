@@ -1,0 +1,9 @@
+Feature: Independent strict checks
+  Scenario Outline: strict structure with an unchecked dataset
+    Given a strict setup for "<state>"
+    When the strict action runs
+    Then the strict result is accepted
+
+    Examples:
+      | state  |
+      | active |
