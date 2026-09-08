@@ -18,5 +18,6 @@ final class TestBlock
         public int $line,
         public array $unimplementedStepComments = [],
         public bool $ignoreExamples = false,
+        public bool $ignoreMapping = false,
     ) {}
 }

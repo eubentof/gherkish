@@ -67,7 +67,7 @@ Feature: FeatureParityChecker parsing
   Scenario: should render compact status dots by default
     Given a feature and test with matching scenarios and steps
     When the feature parity command checks their directory in compact mode
-    Then the command reports a status dot and summary without descriptive checks
+    Then the command reports a status dot, total inner cases, and duration without descriptive checks
 
   Scenario: should retain failure details in compact mode
     Given a feature and test with an unimplemented step
@@ -118,6 +118,16 @@ Feature: FeatureParityChecker parsing
     Given a scenario outline uses a custom dataset with the ignore examples comment
     When the checker validates the ignored custom dataset
     Then the scenario and steps should be covered without validating its Examples table
+
+  Scenario: should leave reverse test mapping validation disabled by default
+    Given a selected directory contains a Pest test without a matching feature scenario
+    When the checker runs without reverse test mapping validation
+    Then the unmatched Pest test should not fail the check
+
+  Scenario: should report unmapped Pest tests while honoring the mapping ignore comment
+    Given a selected directory contains mapped, unmapped, and mapping-ignored tests
+    When the checker validates reverse test mappings
+    Then only the non-ignored unmapped Pest test should fail
 
   Scenario: should return a failure for an invalid selection
     Given a feature directory that does not exist

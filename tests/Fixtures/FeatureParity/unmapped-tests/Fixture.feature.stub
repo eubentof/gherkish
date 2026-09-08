@@ -1,0 +1,3 @@
+Feature: Reverse mapping fixture
+  Scenario: mapped Pest test
+    Given a mapped reverse-check scenario

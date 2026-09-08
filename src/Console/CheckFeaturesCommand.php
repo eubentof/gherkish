@@ -11,11 +11,12 @@ use Symfony\Component\Console\Formatter\OutputFormatter;
 class CheckFeaturesCommand extends Command
 {
     protected $signature = 'gherkish:check '
-        .'{--dir= : Limit the check to feature files inside this directory}'
+        .'{--dir= : Limit the check to features and Pest tests inside this directory}'
         .'{--feature= : Only check a specific feature file}'
         .'{--file= : Alias for --feature}'
         .'{--f= : Alias for --feature}'
         .'{--check-outline-datasets : Validate Scenario Outline datasets against their Examples tables}'
+        .'{--check-unmapped-tests : Validate that every Pest test maps to a Gherkin scenario}'
         .'{--descriptive : Show every scenario, step, and Examples table}'
         .'{--snapshot= : Write the coverage snapshot JSON to the given path}';
 
@@ -30,6 +31,7 @@ class CheckFeaturesCommand extends Command
 
     public function handle(): int
     {
+        $startedAt = microtime(true);
         $this->enableAnsiColors();
         $this->captureEnvState();
         $this->applyRuntimeOverrides();
@@ -47,7 +49,7 @@ class CheckFeaturesCommand extends Command
         FeatureParityChecker::maybeWriteSnapshot();
 
         if ($result instanceof FeatureParityResult) {
-            $this->renderResult($result);
+            $this->renderResult($result, microtime(true) - $startedAt);
             $exitCode = $result->hasErrors() ? self::FAILURE : self::SUCCESS;
         }
 
@@ -58,7 +60,7 @@ class CheckFeaturesCommand extends Command
 
     private function captureEnvState(): void
     {
-        foreach (['FEATURE_PARITY_DIR', 'FEATURE_PARITY_FILE', 'FEATURE_PARITY_FEATURE', 'FEATURE_PARITY_CHECK_OUTLINE_DATASETS', 'FEATURE_PARITY_SNAPSHOT'] as $key) {
+        foreach (['FEATURE_PARITY_DIR', 'FEATURE_PARITY_FILE', 'FEATURE_PARITY_FEATURE', 'FEATURE_PARITY_CHECK_OUTLINE_DATASETS', 'FEATURE_PARITY_CHECK_UNMAPPED_TESTS', 'FEATURE_PARITY_SNAPSHOT'] as $key) {
             $value = getenv($key);
             $this->envBackup[$key] = $value === false ? null : $value;
         }
@@ -89,6 +91,10 @@ class CheckFeaturesCommand extends Command
 
         if ($this->option('check-outline-datasets')) {
             $this->setEnv('FEATURE_PARITY_CHECK_OUTLINE_DATASETS', '1');
+        }
+
+        if ($this->option('check-unmapped-tests')) {
+            $this->setEnv('FEATURE_PARITY_CHECK_UNMAPPED_TESTS', '1');
         }
 
         $snapshot = $this->option('snapshot');
@@ -127,7 +133,7 @@ class CheckFeaturesCommand extends Command
         }
     }
 
-    private function renderResult(FeatureParityResult $result): void
+    private function renderResult(FeatureParityResult $result, float $duration): void
     {
         if ($this->option('descriptive')) {
             $this->renderDescriptiveResult($result);
@@ -135,7 +141,7 @@ class CheckFeaturesCommand extends Command
             $this->renderCompactResult($result);
         }
 
-        $this->renderSummary($result);
+        $this->renderSummary($result, $duration);
     }
 
     private function renderCompactResult(FeatureParityResult $result): void
@@ -169,12 +175,12 @@ class CheckFeaturesCommand extends Command
         foreach ($result->cases as $case) {
             $status = match ($case['status']) {
                 'passed' => 'COVERED',
-                'failed' => 'FAIL',
+                'failed' => 'MISSING',
                 default => 'WARN',
             };
             $style = match ($status) {
                 'COVERED' => 'fg=black;bg=green;options=bold',
-                'FAIL' => 'fg=white;bg=red;options=bold',
+                'MISSING' => 'fg=white;bg=red;options=bold',
                 default => 'fg=black;bg=yellow;options=bold',
             };
             $testPath = $case['testPath'] ?: 'Unmapped feature scenario';
@@ -231,7 +237,7 @@ class CheckFeaturesCommand extends Command
             $scenario = str_replace(' -> ', ' → ', $failure['label']);
 
             $this->line(sprintf(
-                '<fg=white;bg=red;options=bold> FAILED </> <options=bold>%s</> <fg=gray>→ %s</>',
+                '<fg=white;bg=red;options=bold> MISSING </> <options=bold>%s</> <fg=gray>→ %s</>',
                 $this->escape($this->formatTestPath($testPath)),
                 $this->escape($scenario),
             ));
@@ -244,22 +250,47 @@ class CheckFeaturesCommand extends Command
         }
     }
 
-    private function renderSummary(FeatureParityResult $result): void
+    private function renderSummary(FeatureParityResult $result, float $duration): void
     {
         $parts = [];
-        if ($result->errors !== []) {
-            $parts[] = sprintf('<fg=red;options=bold>%d failed</>', count($result->errors));
+        $failed = count($result->errors) - count($result->unmappedTests);
+        $covered = count($result->successes);
+        $skipped = count($result->skipped);
+
+        if ($failed > 0) {
+            $parts[] = sprintf('<fg=red;options=bold>%d missing</>', $failed);
         }
-        if ($result->successes !== []) {
-            $parts[] = sprintf('<fg=green;options=bold>%d covered</>', count($result->successes));
+        if ($covered > 0) {
+            $parts[] = sprintf('<fg=green;options=bold>%d covered</>', $covered);
         }
-        if ($result->skipped !== []) {
-            $parts[] = sprintf('<fg=yellow;options=bold>%d skipped</>', count($result->skipped));
+        if ($skipped > 0) {
+            $parts[] = sprintf('<fg=yellow;options=bold>%d skipped</>', $skipped);
+        }
+
+        if ($parts !== []) {
+            $totalCases = array_sum(array_map(
+                static fn (array $case): int => count($case['steps']),
+                $result->cases,
+            ));
+            $caseLabel = $totalCases === 1 ? 'case' : 'cases';
+            $this->line(sprintf(
+                '  <options=bold>Scenarios:</>  %s <fg=gray>(%d %s)</>',
+                implode(', ', $parts),
+                $totalCases,
+                $caseLabel,
+            ));
+        }
+
+        if ($result->unmappedTests !== []) {
+            $this->line(sprintf(
+                '  <options=bold>Tests:</>      <fg=red;options=bold>%d unmapped</>',
+                count($result->unmappedTests),
+            ));
         }
 
         $this->line(sprintf(
-            '  <options=bold>Scenarios:</>  %s',
-            implode(', ', $parts),
+            '  <options=bold>Duration:</>   <options=bold>%.2fs</>',
+            $duration,
         ));
     }
 

@@ -21,6 +21,8 @@ afterEach(function () {
     unset($_ENV['FEATURE_PARITY_DIR']);
     putenv('FEATURE_PARITY_CHECK_OUTLINE_DATASETS');
     unset($_ENV['FEATURE_PARITY_CHECK_OUTLINE_DATASETS']);
+    putenv('FEATURE_PARITY_CHECK_UNMAPPED_TESTS');
+    unset($_ENV['FEATURE_PARITY_CHECK_UNMAPPED_TESTS']);
     FeatureParityChecker::resetSelection();
     $this->filesystem->deleteDirectory($this->fixtureRoot);
 });
@@ -236,19 +238,19 @@ describe('gherkish:check command', function () {
     it('should render compact status dots by default', function () {
         /** @Given a feature and test with matching scenarios and steps */
         $fixture = writeFeatureParityFixture('command-success');
-
-        /** @When the feature parity command checks their directory in compact mode */
+        
         $output = new BufferedOutput;
         $exitCode = Artisan::call('gherkish:check', [
             '--dir' => $fixture['dir'],
             '--no-ansi' => true,
         ], $output);
 
-        /** @Then the command reports a status dot and summary without descriptive checks */
+        /** @Then the command reports a status dot, total inner cases, and duration without descriptive checks */
         expect($exitCode)->toBe(0);
         expect($output->fetch())
             ->toContain("  .\n")
-            ->toContain('Scenarios:  1 covered')
+            ->toContain('Scenarios:  1 covered (3 cases)')
+            ->toMatch('/Duration:\s+\d+\.\d{2}s/')
             ->not->toContain('Given a mapped command scenario')
             ->not->toContain('COVERED');
     });
@@ -268,9 +270,9 @@ describe('gherkish:check command', function () {
         expect($exitCode)->toBe(1);
         expect($output->fetch())
             ->toContain("  F.\n")
-            ->toContain('FAILED  Tests\\.feature-parity-fixtures\\command-failure\\FixtureTest')
+            ->toContain('MISSING  Tests\\.feature-parity-fixtures\\command-failure\\FixtureTest')
             ->toContain('has Pest step docblocks without executable PHP code directly below them')
-            ->toContain('Scenarios:  1 failed, 1 covered')
+            ->toContain('Scenarios:  1 missing, 1 covered')
             ->not->toContain('⨯ Given a mapped command scenario');
     });
 
@@ -319,16 +321,15 @@ describe('gherkish:check command', function () {
 
         /** @Then the command reports the failed scenario as checks and collects its details at the end */
         $command
-            ->expectsOutputToContain('FAIL  Tests\.feature-parity-fixtures\command-failure\FixtureTest → Command integration → should reject an empty step')
+            ->expectsOutputToContain('MISSING  Tests\.feature-parity-fixtures\command-failure\FixtureTest → Command integration → should reject an empty step')
             ->expectsOutputToContain('⨯ Given a mapped command scenario')
             ->expectsOutputToContain('✓ When the package command runs')
             ->expectsOutputToContain('✓ Then it exits successfully')
             ->expectsOutputToContain('COVERED  Tests\.feature-parity-fixtures\command-failure\FixtureTest → Command integration → should accept implemented steps')
             ->expectsOutputToContain('✓ Given another mapped command scenario')
             ->expectsOutputToContain('✓ Then its implementation is accepted')
-            ->expectsOutputToContain('FAILED  Tests\.feature-parity-fixtures\command-failure\FixtureTest → Command integration → should reject an empty step')
             ->expectsOutputToContain('has Pest step docblocks without executable PHP code directly below them')
-            ->expectsOutputToContain('Scenarios:  1 failed, 1 covered')
+            ->expectsOutputToContain('Scenarios:  1 missing, 1 covered')
             ->assertFailed();
     });
 
@@ -452,6 +453,42 @@ describe('gherkish:check command', function () {
             ->assertSuccessful();
     });
 
+    it('should leave reverse test mapping validation disabled by default', function () {
+        /** @Given a selected directory contains a Pest test without a matching feature scenario */
+        $fixture = writeFeatureParityFixture('unmapped-tests');
+
+        /** @When the checker runs without reverse test mapping validation */
+        $command = $this->artisan('gherkish:check', [
+            '--dir' => $fixture['dir'],
+            '--no-ansi' => true,
+        ]);
+
+        /** @Then the unmatched Pest test should not fail the check */
+        $command
+            ->doesntExpectOutputToContain('unmapped Pest test')
+            ->assertSuccessful();
+    });
+
+    it('should report unmapped Pest tests while honoring the mapping ignore comment', function () {
+        /** @Given a selected directory contains mapped, unmapped, and mapping-ignored tests */
+        $fixture = writeFeatureParityFixture('unmapped-tests');
+
+        /** @When the checker validates reverse test mappings */
+        $command = $this->artisan('gherkish:check', [
+            '--dir' => $fixture['dir'],
+            '--check-unmapped-tests' => true,
+            '--no-ansi' => true,
+        ]);
+
+        /** @Then only the non-ignored unmapped Pest test should fail */
+        $command
+            ->expectsOutputToContain('Pest test "unmapped Pest test"')
+            ->expectsOutputToContain('// @gherkish-ignore-mapping')
+            ->expectsOutputToContain('Tests:      1 unmapped')
+            ->doesntExpectOutputToContain('Pest test "intentionally unmapped Pest test"')
+            ->assertFailed();
+    });
+
     it('should return a failure for an invalid selection', function () {
         /** @Given a feature directory that does not exist */
         $missingDirectory = 'missing-gherkish-directory';
@@ -566,6 +603,15 @@ function writeFeatureParityFixture(string $fixture, ?string $case = null): array
         $filesystem->put($testPath, rtrim($testContent).PHP_EOL);
     }
 
+    foreach (glob($stubDir.'/*Test.php.stub') ?: [] as $additionalTestStub) {
+        if ($additionalTestStub === $testStub) {
+            continue;
+        }
+
+        $additionalTestPath = $dir.'/'.basename($additionalTestStub, '.stub');
+        $filesystem->put($additionalTestPath, rtrim($filesystem->get($additionalTestStub)).PHP_EOL);
+    }
+
     return [
         'dir' => $dir,
         'featurePath' => $featurePath,
@@ -604,6 +650,8 @@ function runFeatureParityFixture(string $dir, bool $checkOutlineDatasets = false
     unset($_ENV['FEATURE_PARITY_DIR']);
     putenv('FEATURE_PARITY_CHECK_OUTLINE_DATASETS');
     unset($_ENV['FEATURE_PARITY_CHECK_OUTLINE_DATASETS']);
+    putenv('FEATURE_PARITY_CHECK_UNMAPPED_TESTS');
+    unset($_ENV['FEATURE_PARITY_CHECK_UNMAPPED_TESTS']);
     FeatureParityChecker::resetSelection();
 
     return $result;

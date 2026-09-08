@@ -1,0 +1,10 @@
+<?php
+
+test('unmapped Pest test', function () {
+    expect(true)->toBeTrue();
+});
+
+// @gherkish-ignore-mapping
+test('intentionally unmapped Pest test', function () {
+    expect(true)->toBeTrue();
+});

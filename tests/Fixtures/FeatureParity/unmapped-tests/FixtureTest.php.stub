@@ -1,0 +1,6 @@
+<?php
+
+test('mapped Pest test', function () {
+    /** @Given a mapped reverse-check scenario */
+    expect(true)->toBeTrue();
+});

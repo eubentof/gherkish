@@ -35,7 +35,7 @@ final class FeatureParityChecker
 
         $featurePaths = self::selectedFeaturePaths();
 
-        if (empty($featurePaths)) {
+        if (empty($featurePaths) && ! self::shouldCheckUnmappedTests()) {
             $target = $selection->file ?? $selection->dir ?? 'tests directory';
             $result->addSkipped(
                 'feature parity selection',
@@ -104,6 +104,18 @@ final class FeatureParityChecker
                     );
                 }
             }
+        }
+
+        if (self::shouldCheckUnmappedTests()) {
+            self::checkTestMappings($result, $featurePaths);
+        }
+
+        if ($result->cases === []) {
+            $target = $selection->file ?? $selection->dir ?? 'tests directory';
+            $result->addSkipped(
+                'feature parity selection',
+                sprintf('No Gherkin scenarios or Pest tests found for selection "%s".', $target),
+            );
         }
 
         return $result;
@@ -740,6 +752,14 @@ final class FeatureParityChecker
         );
     }
 
+    private static function shouldCheckUnmappedTests(): bool
+    {
+        return filter_var(
+            getenv('FEATURE_PARITY_CHECK_UNMAPPED_TESTS') ?: false,
+            FILTER_VALIDATE_BOOL,
+        );
+    }
+
     /**
      * @param  array<int, array{label:string|null,rows:list<array<string,string>>}>  $blocks
      */
@@ -990,6 +1010,7 @@ final class FeatureParityChecker
                 $startLine,
                 $unimplementedStepComments,
                 self::hasIgnoreExamplesComment($content, $start),
+                self::hasIgnoreMappingComment($content, $start),
             );
         }
 
@@ -997,6 +1018,16 @@ final class FeatureParityChecker
     }
 
     private static function hasIgnoreExamplesComment(string $content, int $testOffset): bool
+    {
+        return self::hasScopedIgnoreComment($content, $testOffset, 'examples');
+    }
+
+    private static function hasIgnoreMappingComment(string $content, int $testOffset): bool
+    {
+        return self::hasScopedIgnoreComment($content, $testOffset, 'mapping');
+    }
+
+    private static function hasScopedIgnoreComment(string $content, int $testOffset, string $scope): bool
     {
         $beforeTest = substr($content, 0, $testOffset);
         $lines = preg_split('/\R/', $beforeTest) ?: [];
@@ -1007,10 +1038,131 @@ final class FeatureParityChecker
                 continue;
             }
 
-            return preg_match('~^//\s*@gherkish-ignore-examples\s*$~i', $line) === 1;
+            return preg_match(sprintf('~^//\s*@gherkish-ignore-%s\s*$~i', preg_quote($scope, '~')), $line) === 1;
         }
 
         return false;
+    }
+
+    /**
+     * @param  string[]  $featurePaths
+     */
+    private static function checkTestMappings(FeatureParityResult $result, array $featurePaths): void
+    {
+        $featuresByTestPath = [];
+        $linkedTestPaths = [];
+
+        foreach ($featurePaths as $featurePath) {
+            $feature = self::parseFeature($featurePath);
+            $testPaths = self::resolveFeatureTestPaths($feature) ?? [self::pairTestPath($feature->path)];
+
+            foreach ($testPaths as $testPath) {
+                $testPath = self::canonicalPath($testPath);
+                $featuresByTestPath[$testPath][] = $feature;
+                $linkedTestPaths[] = $testPath;
+            }
+        }
+
+        foreach (self::selectedPestTestPaths($linkedTestPaths) as $testPath) {
+            $features = $featuresByTestPath[self::canonicalPath($testPath)] ?? [];
+
+            foreach (self::parsePestFile($testPath)->tests as $test) {
+                if ($test->ignoreMapping || self::testMatchesFeatureScenario($test, $features)) {
+                    continue;
+                }
+
+                $testLocation = sprintf('%s:%d', self::relativeTestPath($test->filePath), $test->line);
+                $featureReferences = array_map(
+                    static fn (FeatureDoc $feature): string => self::relativeTestPath($feature->path),
+                    $features,
+                );
+                $mappingDetail = $featureReferences === []
+                    ? 'No selected feature file maps to this Pest test file.'
+                    : 'No matching Scenario was found in: '.implode(', ', $featureReferences).'.';
+
+                $result->addUnmappedTest(
+                    sprintf('Pest test -> %s', $test->name),
+                    sprintf(
+                        "Pest test \"%s\" (%s) has no matching Gherkin scenario.\n%s\nAdd a matching Scenario or place // @gherkish-ignore-mapping directly above the test.",
+                        $test->name,
+                        $testLocation,
+                        $mappingDetail,
+                    ),
+                    self::relativeTestPath($test->filePath),
+                );
+            }
+        }
+    }
+
+    /**
+     * @param  FeatureDoc[]  $features
+     */
+    private static function testMatchesFeatureScenario(TestBlock $test, array $features): bool
+    {
+        foreach ($features as $feature) {
+            foreach ($feature->scenarios as $scenario) {
+                if (self::matchesTestName($scenario->title, $test->name)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  string[]  $linkedTestPaths
+     * @return string[]
+     */
+    private static function selectedPestTestPaths(array $linkedTestPaths): array
+    {
+        $selection = self::selection();
+
+        if ($selection->file !== null) {
+            $paths = $linkedTestPaths;
+        } elseif ($selection->dir !== null) {
+            $paths = array_merge(self::findPestTestFiles($selection->dir), $linkedTestPaths);
+        } else {
+            $paths = array_merge(
+                self::findPestTestFiles(self::testsBasePath()),
+                self::findPestTestFiles(self::appBasePath()),
+                $linkedTestPaths,
+            );
+        }
+
+        $paths = array_values(array_unique(array_map(self::canonicalPath(...), $paths)));
+        sort($paths);
+
+        return array_values(array_filter($paths, 'is_file'));
+    }
+
+    /**
+     * @return string[]
+     */
+    private static function findPestTestFiles(string $base): array
+    {
+        if (! is_dir($base)) {
+            return [];
+        }
+
+        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($base));
+        $paths = [];
+
+        /** @var SplFileInfo $file */
+        foreach ($iterator as $file) {
+            if ($file->isFile() && str_ends_with($file->getFilename(), 'Test.php')) {
+                $paths[] = $file->getPathname();
+            }
+        }
+
+        sort($paths);
+
+        return $paths;
+    }
+
+    private static function canonicalPath(string $path): string
+    {
+        return realpath($path) ?: $path;
     }
 
     private static function extractStatement(string $content, int $start): string
