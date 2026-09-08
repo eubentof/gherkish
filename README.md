@@ -243,11 +243,26 @@ Pass these options to `php artisan gherkish:check`:
 | `--feature=tests/Feature/Users/CreateUser.feature` | Check a specific feature file. | `FEATURE_PARITY_FILE` or `FEATURE_PARITY_FEATURE` |
 | `--file=tests/Feature/Users/CreateUser.feature` | Alias for `--feature`. | `FEATURE_PARITY_FILE` or `FEATURE_PARITY_FEATURE` |
 | `--f=tests/Feature/Users/CreateUser.feature` | Short alias for `--feature`. | `FEATURE_PARITY_FILE` or `FEATURE_PARITY_FEATURE` |
+| `--staged` | Check only staged feature files and features paired with staged Pest tests. Cannot be combined with a path filter. | — |
 | `--check-outline-datasets` | Validate Scenario Outline datasets against their Examples tables. | `FEATURE_PARITY_CHECK_OUTLINE_DATASETS=1` |
 | `--check-unmapped-tests` | Validate that every Pest test maps to a Gherkin scenario. | `FEATURE_PARITY_CHECK_UNMAPPED_TESTS=1` |
 | `--strict` | Require every Scenario and Scenario Outline to contain effective Given, When, and Then phases. | `FEATURE_PARITY_STRICT=1` |
 | `--descriptive` | Show every scenario, step, and Examples table instead of compact status dots. | — |
 | `--snapshot=storage/app/feature-parity.json` | Write the coverage snapshot as JSON. | `FEATURE_PARITY_SNAPSHOT` |
+
+Use `--staged` in pre-commit workflows to select added, copied, modified, and
+renamed files from the Git index:
+
+```bash
+php artisan gherkish:check --staged
+```
+
+Staged `.feature` files are checked against their mapped Pest files. Staged PHP
+test files select same-basename features and features that list them under
+`@tests:`. Deleted files, feature files outside the application's `app/` and
+`tests/` roots, and unlinked tests outside those roots are ignored. The checker
+validates the current working tree contents of each selected file and succeeds
+with a skipped selection when no relevant files are staged.
 
 ## Development
 

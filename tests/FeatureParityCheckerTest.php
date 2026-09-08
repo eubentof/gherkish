@@ -4,6 +4,8 @@ use Gherkish\Examples\ExampleDatasetResolver;
 use Gherkish\Examples\ExamplesException;
 use Gherkish\FeatureParity\FeatureParityChecker;
 use Gherkish\FeatureParity\FeatureParityResult;
+use Gherkish\FeatureParity\GitStagedFileResolver;
+use Gherkish\FeatureParity\StagedFileResolver;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
 use Symfony\Component\Console\Output\BufferedOutput;
@@ -303,6 +305,170 @@ describe('FeatureParityChecker discovery', function () {
             ->toContain(realpath($appFeature));
 
         $this->filesystem->delete([$testsFeature, $appFeature]);
+    });
+});
+
+describe('staged feature selection', function () {
+    it('should check only staged feature files', function () {
+        /** @Given staged covered and unstaged failing feature files */
+        $staged = writeFeatureParityFixture('command-success', 'staged-success');
+        $unstaged = writeFeatureParityFixture('command-failure', 'unstaged-failure');
+        $this->app->instance(StagedFileResolver::class, fakeStagedFileResolver([$staged['featurePath']]));
+
+        /** @When the feature parity command checks staged files */
+        $output = new BufferedOutput;
+        $exitCode = Artisan::call('gherkish:check', [
+            '--staged' => true,
+            '--descriptive' => true,
+            '--no-ansi' => true,
+        ], $output);
+
+        /** @Then only the staged feature scenarios are checked */
+        expect($exitCode)->toBe(0);
+        expect($output->fetch())
+            ->toContain('should run through Artisan')
+            ->not->toContain('should reject an empty step');
+        expect($unstaged['featurePath'])->toBeFile();
+    });
+
+    it('should resolve a staged conventionally paired Pest test', function () {
+        /** @Given a staged Pest test beside its same-basename feature */
+        $fixture = writeFeatureParityFixture('command-success', 'staged-paired-test');
+        $this->app->instance(StagedFileResolver::class, fakeStagedFileResolver([$fixture['testPath']]));
+
+        /** @When the feature parity command checks staged files */
+        $output = new BufferedOutput;
+        $exitCode = Artisan::call('gherkish:check', [
+            '--staged' => true,
+            '--descriptive' => true,
+            '--no-ansi' => true,
+        ], $output);
+
+        /** @Then the conventionally paired feature is checked */
+        expect($exitCode)->toBe(0);
+        expect($output->fetch())->toContain('should run through Artisan');
+    });
+
+    it('should resolve a staged Pest test through an explicit feature mapping', function () {
+        /** @Given a staged Pest test listed by a feature in its Tests section */
+        $fixture = writeFeatureParityFixture('command-success', 'staged-explicit-mapping');
+        $explicitTestPath = $fixture['dir'].'/ExplicitCommandTest.php';
+        $this->filesystem->move($fixture['testPath'], $explicitTestPath);
+        $relativeTestPath = str_replace(base_path().DIRECTORY_SEPARATOR, '', $explicitTestPath);
+        $feature = $this->filesystem->get($fixture['featurePath']);
+        $feature = preg_replace(
+            '/^(Feature:[^\r\n]+\R)/',
+            "$1\n  @tests:\n  - {$relativeTestPath}\n",
+            $feature,
+            1,
+        );
+        $this->filesystem->put($fixture['featurePath'], $feature);
+        $this->app->instance(StagedFileResolver::class, fakeStagedFileResolver([$explicitTestPath]));
+
+        /** @When the feature parity command checks staged files */
+        $output = new BufferedOutput;
+        $exitCode = Artisan::call('gherkish:check', [
+            '--staged' => true,
+            '--descriptive' => true,
+            '--no-ansi' => true,
+        ], $output);
+
+        /** @Then the explicitly mapped feature is checked */
+        expect($exitCode)->toBe(0);
+        expect($output->fetch())
+            ->toContain('ExplicitCommandTest')
+            ->toContain('should run through Artisan');
+    });
+
+    it('should skip when no staged Gherkish files exist', function () {
+        /** @Given the staged selection contains no feature or Pest test files */
+        $this->app->instance(StagedFileResolver::class, fakeStagedFileResolver([base_path('README.md')]));
+
+        /** @When the feature parity command checks staged files */
+        $output = new BufferedOutput;
+        $exitCode = Artisan::call('gherkish:check', [
+            '--staged' => true,
+            '--descriptive' => true,
+            '--no-ansi' => true,
+        ], $output);
+
+        /** @Then the staged check reports an empty successful selection */
+        expect($exitCode)->toBe(0);
+        expect($output->fetch())
+            ->toContain('No Gherkin scenarios found for selection "staged files".')
+            ->toContain('1 skipped');
+    });
+
+    it('should limit reverse mapping validation to staged Pest files', function () {
+        /** @Given staged and unstaged Pest files without feature mappings */
+        $directory = $this->fixtureRoot.'/staged-reverse-mapping';
+        $this->filesystem->makeDirectory($directory, 0777, true, true);
+        $stagedTestPath = $directory.'/StagedTest.php';
+        $this->filesystem->put($stagedTestPath, "<?php\n\ntest('staged orphan', function () {});\n");
+        $this->filesystem->put($directory.'/UnstagedTest.php', "<?php\n\ntest('unstaged orphan', function () {});\n");
+        $this->app->instance(StagedFileResolver::class, fakeStagedFileResolver([$stagedTestPath]));
+
+        /** @When the staged checker validates reverse test mappings */
+        $output = new BufferedOutput;
+        $exitCode = Artisan::call('gherkish:check', [
+            '--staged' => true,
+            '--check-unmapped-tests' => true,
+            '--no-ansi' => true,
+        ], $output);
+
+        /** @Then only the staged Pest file is reported as unmapped */
+        expect($exitCode)->toBe(1);
+        expect($output->fetch())
+            ->toContain('staged orphan')
+            ->not->toContain('unstaged orphan')
+            ->toContain('Tests:      1 unmapped');
+    });
+
+    it('should reject staged and explicit path filters together', function () {
+        /** @Given a staged selection and an explicit feature directory */
+        $fixture = writeFeatureParityFixture('command-success', 'staged-incompatible-selection');
+
+        /** @When the feature parity command checks both selections */
+        $output = new BufferedOutput;
+        $exitCode = Artisan::call('gherkish:check', [
+            '--staged' => true,
+            '--dir' => $fixture['dir'],
+            '--no-ansi' => true,
+        ], $output);
+
+        /** @Then the command reports an incompatible selection failure */
+        expect($exitCode)->toBe(1);
+        expect($output->fetch())->toContain(
+            'The --staged option cannot be combined with --dir, --feature, --file, or --f.'
+        );
+    });
+
+    it('should discover staged files from the Git index', function () {
+        /** @Given a Git repository with staged unstaged and deleted files */
+        $repository = sys_get_temp_dir().'/gherkish-staged-'.bin2hex(random_bytes(6));
+        $this->filesystem->makeDirectory($repository, 0777, true, true);
+
+        try {
+            runGitFixtureCommand($repository, ['init', '--quiet']);
+            runGitFixtureCommand($repository, ['config', 'user.email', 'gherkish@test.me']);
+            runGitFixtureCommand($repository, ['config', 'user.name', 'Gherkish Tests']);
+            $this->filesystem->put($repository.'/deleted.feature', "Feature: Deleted\n");
+            runGitFixtureCommand($repository, ['add', 'deleted.feature']);
+            runGitFixtureCommand($repository, ['commit', '--quiet', '-m', 'Initial fixture']);
+            $stagedPath = $repository.'/staged feature.feature';
+            $this->filesystem->put($stagedPath, "Feature: Staged\n");
+            $this->filesystem->put($repository.'/unstaged.feature', "Feature: Unstaged\n");
+            $this->filesystem->delete($repository.'/deleted.feature');
+            runGitFixtureCommand($repository, ['add', 'staged feature.feature', 'deleted.feature']);
+
+            /** @When the staged file resolver reads the Git index */
+            $paths = (new GitStagedFileResolver)->resolve($repository);
+
+            /** @Then only existing staged paths are returned */
+            expect($paths)->toBe([realpath($stagedPath)]);
+        } finally {
+            $this->filesystem->deleteDirectory($repository);
+        }
     });
 });
 
@@ -860,6 +1026,52 @@ function runFeatureParityFixture(
     FeatureParityChecker::resetSelection();
 
     return $result;
+}
+
+/**
+ * @param  string[]  $paths
+ */
+function fakeStagedFileResolver(array $paths): StagedFileResolver
+{
+    return new class($paths) implements StagedFileResolver
+    {
+        /**
+         * @param  string[]  $paths
+         */
+        public function __construct(private readonly array $paths) {}
+
+        public function resolve(string $projectPath): array
+        {
+            return $this->paths;
+        }
+    };
+}
+
+/**
+ * @param  string[]  $arguments
+ */
+function runGitFixtureCommand(string $repository, array $arguments): void
+{
+    $pipes = [];
+    $process = proc_open(array_merge(['git', '-C', $repository], $arguments), [
+        0 => ['pipe', 'r'],
+        1 => ['pipe', 'w'],
+        2 => ['pipe', 'w'],
+    ], $pipes);
+
+    if (! is_resource($process)) {
+        throw new RuntimeException('Could not start Git for staged-file fixture.');
+    }
+
+    fclose($pipes[0]);
+    stream_get_contents($pipes[1]);
+    fclose($pipes[1]);
+    $error = stream_get_contents($pipes[2]);
+    fclose($pipes[2]);
+
+    if (proc_close($process) !== 0) {
+        throw new RuntimeException('Git fixture command failed: '.trim((string) $error));
+    }
 }
 
 function writeLoginExamplesFixture(string $case): array

@@ -84,6 +84,41 @@ Feature: FeatureParityChecker parsing
     When the checker resolves its default feature selection
     Then features from tests and app are included
 
+  Scenario: should check only staged feature files
+    Given staged covered and unstaged failing feature files
+    When the feature parity command checks staged files
+    Then only the staged feature scenarios are checked
+
+  Scenario: should resolve a staged conventionally paired Pest test
+    Given a staged Pest test beside its same-basename feature
+    When the feature parity command checks staged files
+    Then the conventionally paired feature is checked
+
+  Scenario: should resolve a staged Pest test through an explicit feature mapping
+    Given a staged Pest test listed by a feature in its Tests section
+    When the feature parity command checks staged files
+    Then the explicitly mapped feature is checked
+
+  Scenario: should skip when no staged Gherkish files exist
+    Given the staged selection contains no feature or Pest test files
+    When the feature parity command checks staged files
+    Then the staged check reports an empty successful selection
+
+  Scenario: should limit reverse mapping validation to staged Pest files
+    Given staged and unstaged Pest files without feature mappings
+    When the staged checker validates reverse test mappings
+    Then only the staged Pest file is reported as unmapped
+
+  Scenario: should reject staged and explicit path filters together
+    Given a staged selection and an explicit feature directory
+    When the feature parity command checks both selections
+    Then the command reports an incompatible selection failure
+
+  Scenario: should discover staged files from the Git index
+    Given a Git repository with staged unstaged and deleted files
+    When the staged file resolver reads the Git index
+    Then only existing staged paths are returned
+
   Scenario: should register the package command and report successful parity
     Given a feature and test with matching scenarios and steps
     When the feature parity command checks their directory

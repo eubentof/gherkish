@@ -14,6 +14,9 @@ final class FeatureParityChecker
 {
     private static ?FeatureParitySelection $selection = null;
 
+    /** @var string[]|null */
+    private static ?array $stagedPaths = null;
+
     public static function run(): FeatureParityResult
     {
         $selection = self::selection();
@@ -36,7 +39,7 @@ final class FeatureParityChecker
         $featurePaths = self::selectedFeaturePaths();
 
         if (empty($featurePaths) && ! self::shouldCheckUnmappedTests()) {
-            $target = $selection->file ?? $selection->dir ?? 'tests directory';
+            $target = self::selectionTarget($selection);
             $result->addSkipped(
                 'feature parity selection',
                 sprintf('No Gherkin scenarios found for selection "%s".', $target)
@@ -125,7 +128,7 @@ final class FeatureParityChecker
         }
 
         if ($result->cases === []) {
-            $target = $selection->file ?? $selection->dir ?? 'tests directory';
+            $target = self::selectionTarget($selection);
             $result->addSkipped(
                 'feature parity selection',
                 sprintf('No Gherkin scenarios or Pest tests found for selection "%s".', $target),
@@ -174,6 +177,16 @@ final class FeatureParityChecker
 
     public static function resetSelection(): void
     {
+        self::$selection = null;
+        self::$stagedPaths = null;
+    }
+
+    /**
+     * @param  string[]  $paths
+     */
+    public static function selectStagedPaths(array $paths): void
+    {
+        self::$stagedPaths = array_values(array_unique(array_map(self::canonicalPath(...), $paths)));
         self::$selection = null;
     }
 
@@ -461,6 +474,10 @@ final class FeatureParityChecker
 
     private static function selectedFeaturePaths(): array
     {
+        if (self::$stagedPaths !== null) {
+            return self::selectedStagedFeaturePaths();
+        }
+
         $selection = self::selection();
 
         if ($selection->file !== null) {
@@ -471,12 +488,112 @@ final class FeatureParityChecker
             return self::findFeatureFiles($selection->dir);
         }
 
+        return self::defaultFeaturePaths();
+    }
+
+    private static function selectionTarget(FeatureParitySelection $selection): string
+    {
+        if (self::$stagedPaths !== null) {
+            return 'staged files';
+        }
+
+        return $selection->file ?? $selection->dir ?? 'tests directory';
+    }
+
+    /**
+     * @return string[]
+     */
+    private static function defaultFeaturePaths(): array
+    {
         $paths = array_merge(
             self::findFeatureFiles(self::testsBasePath()),
             self::findFeatureFiles(self::appBasePath()),
         );
 
         sort($paths);
+
+        return array_values(array_unique($paths));
+    }
+
+    /**
+     * @return string[]
+     */
+    private static function selectedStagedFeaturePaths(): array
+    {
+        $stagedPaths = array_fill_keys(self::$stagedPaths ?? [], true);
+        $stagedPhpPaths = array_filter(
+            self::$stagedPaths ?? [],
+            static fn (string $path): bool => str_ends_with($path, '.php'),
+        );
+        $stagedPhpPaths = array_fill_keys($stagedPhpPaths, true);
+        $paths = [];
+
+        foreach (self::defaultFeaturePaths() as $featurePath) {
+            $featurePath = self::canonicalPath($featurePath);
+            if (isset($stagedPaths[$featurePath])) {
+                $paths[] = $featurePath;
+
+                continue;
+            }
+
+            if (isset($stagedPhpPaths[self::canonicalPath(self::pairTestPath($featurePath))])) {
+                $paths[] = $featurePath;
+
+                continue;
+            }
+
+            foreach (self::declaredFeatureTestPaths($featurePath) as $testPath) {
+                if (isset($stagedPhpPaths[self::canonicalPath($testPath)])) {
+                    $paths[] = $featurePath;
+
+                    continue 2;
+                }
+            }
+        }
+
+        sort($paths);
+
+        return array_values(array_unique($paths));
+    }
+
+    /**
+     * @return string[]
+     */
+    private static function declaredFeatureTestPaths(string $featurePath): array
+    {
+        $paths = [];
+        $collectingTests = false;
+
+        foreach (file($featurePath, FILE_IGNORE_NEW_LINES) ?: [] as $line) {
+            $trimmed = trim($line);
+
+            if (preg_match('/^@tests:\s*$/i', $trimmed)) {
+                $collectingTests = true;
+
+                continue;
+            }
+
+            if (! $collectingTests) {
+                continue;
+            }
+
+            if ($trimmed === '') {
+                $collectingTests = false;
+
+                continue;
+            }
+
+            if (preg_match('/^-\s*(.+)$/', $trimmed, $match)) {
+                $path = self::resolvePathInput(trim($match[1]), mustBeFile: true);
+                if ($path !== null) {
+                    $paths[] = $path;
+                }
+
+                continue;
+            }
+
+            $collectingTests = false;
+        }
 
         return array_values(array_unique($paths));
     }
@@ -1412,6 +1529,22 @@ final class FeatureParityChecker
      */
     private static function selectedPestTestPaths(array $linkedTestPaths): array
     {
+        if (self::$stagedPaths !== null) {
+            $linkedTestPaths = array_fill_keys(array_map(self::canonicalPath(...), $linkedTestPaths), true);
+            $paths = array_filter(
+                self::$stagedPaths,
+                static fn (string $path): bool => str_ends_with($path, 'Test.php') && (
+                    isset($linkedTestPaths[self::canonicalPath($path)])
+                    || self::pathIsWithin($path, self::testsBasePath())
+                    || self::pathIsWithin($path, self::appBasePath())
+                ),
+            );
+            $paths = array_values(array_unique(array_map(self::canonicalPath(...), $paths)));
+            sort($paths);
+
+            return array_values(array_filter($paths, 'is_file'));
+        }
+
         $selection = self::selection();
 
         if ($selection->file !== null) {
@@ -1430,6 +1563,14 @@ final class FeatureParityChecker
         sort($paths);
 
         return array_values(array_filter($paths, 'is_file'));
+    }
+
+    private static function pathIsWithin(string $path, string $directory): bool
+    {
+        $path = self::canonicalPath($path);
+        $directory = rtrim(self::canonicalPath($directory), DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
+
+        return str_starts_with($path, $directory);
     }
 
     /**

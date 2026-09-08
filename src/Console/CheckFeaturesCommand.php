@@ -5,6 +5,7 @@ namespace Gherkish\Console;
 use Gherkish\FeatureParity\FeatureParityChecker;
 use Gherkish\FeatureParity\FeatureParityConfigurationException;
 use Gherkish\FeatureParity\FeatureParityResult;
+use Gherkish\FeatureParity\StagedFileResolver;
 use Illuminate\Console\Command;
 use Symfony\Component\Console\Formatter\OutputFormatter;
 
@@ -15,6 +16,7 @@ class CheckFeaturesCommand extends Command
         .'{--feature= : Only check a specific feature file}'
         .'{--file= : Alias for --feature}'
         .'{--f= : Alias for --feature}'
+        .'{--staged : Only check feature and Pest test files staged in Git}'
         .'{--check-outline-datasets : Validate Scenario Outline datasets against their Examples tables}'
         .'{--check-unmapped-tests : Validate that every Pest test maps to a Gherkin scenario}'
         .'{--strict : Require every Scenario and Scenario Outline to contain Given, When, and Then phases}'
@@ -30,24 +32,29 @@ class CheckFeaturesCommand extends Command
 
     private bool $selectionDirty = false;
 
-    public function handle(): int
+    public function handle(StagedFileResolver $stagedFileResolver): int
     {
         $startedAt = microtime(true);
         $this->enableAnsiColors();
         $this->captureEnvState();
-        $this->applyRuntimeOverrides();
 
         $result = null;
         $exitCode = self::SUCCESS;
 
         try {
+            $this->applyRuntimeOverrides();
+
+            if ($this->option('staged')) {
+                $this->assertStagedSelectionIsCompatible();
+                FeatureParityChecker::selectStagedPaths($stagedFileResolver->resolve(base_path()));
+            }
+
             $result = FeatureParityChecker::run();
+            FeatureParityChecker::maybeWriteSnapshot();
         } catch (FeatureParityConfigurationException $exception) {
             $this->error($this->escape($exception->getMessage()));
             $exitCode = self::FAILURE;
         }
-
-        FeatureParityChecker::maybeWriteSnapshot();
 
         if ($result instanceof FeatureParityResult) {
             $this->renderResult($result, microtime(true) - $startedAt);
@@ -57,6 +64,18 @@ class CheckFeaturesCommand extends Command
         $this->restoreEnvState();
 
         return $exitCode;
+    }
+
+    private function assertStagedSelectionIsCompatible(): void
+    {
+        foreach (['FEATURE_PARITY_DIR', 'FEATURE_PARITY_FILE', 'FEATURE_PARITY_FEATURE'] as $key) {
+            $value = getenv($key);
+            if (is_string($value) && $value !== '') {
+                throw new FeatureParityConfigurationException(
+                    'The --staged option cannot be combined with --dir, --feature, --file, or --f.'
+                );
+            }
+        }
     }
 
     private function captureEnvState(): void
