@@ -37,9 +37,9 @@ Feature: FeatureParityChecker parsing
     When the checker runs
     Then the error should identify the Background and Pest test locations
 
-  Scenario: should keep Background parity independent from strict structure
+  Scenario: should keep Background parity independent from phased structure
     Given a mapped Background supplies the setup phase
-    When the checker validates the feature in strict mode
+    When the checker validates the feature in phased mode
     Then the Background Given should not satisfy the Scenario structure
 
   Scenario: should reject missing mismatched and unimplemented Background annotations
@@ -127,7 +127,7 @@ Feature: FeatureParityChecker parsing
   Scenario: should render compact status dots by default
     Given a feature and test with matching scenarios and steps
     When the feature parity command checks their directory in compact mode
-    Then the command reports a status dot, total inner cases, and duration without descriptive checks
+    Then the command reports a status dot, total inner cases, and duration without long-form checks
 
   Scenario: should retain failure details in compact mode
     Given a feature and test with an unimplemented step
@@ -136,7 +136,7 @@ Feature: FeatureParityChecker parsing
 
   Scenario: should render Symfony console tags as literal text
     Given feature output contains placeholders matching Symfony console styles
-    When the feature parity command renders descriptive output
+    When the feature parity command renders long output
     Then the placeholders should remain literal without activating console styles
 
   Scenario: should render failed command checks in a Pest-style test file group
@@ -189,26 +189,26 @@ Feature: FeatureParityChecker parsing
     When the checker runs without reverse test mapping validation
     Then the unmatched Pest test should not fail the check
 
-  Scenario: should leave strict scenario structure validation disabled by default
+  Scenario: should leave phased scenario structure validation disabled by default
     Given mapped scenarios that do not contain every Given When and Then phase
-    When the checker runs without strict scenario structure validation
+    When the checker runs without phased scenario structure validation
     Then the structurally incomplete scenarios should remain covered
 
-  Scenario: should accept complete scenario structure in strict mode
+  Scenario: should accept complete scenario structure in phased mode
     Given mapped scenarios and outlines containing Given When and Then phases
     And additional steps that inherit an established phase
-    When the checker runs with strict scenario structure validation
+    When the checker runs with phased scenario structure validation
     Then every structurally complete scenario should remain covered
 
-  Scenario: should reject incomplete scenario structure in strict mode
+  Scenario: should reject incomplete scenario structure in phased mode
     Given mapped scenarios and outlines missing Given When or Then phases
     And leading secondary keywords without an established phase
-    When the checker runs with strict scenario structure validation
+    When the checker runs with phased scenario structure validation
     Then each incomplete structure should report its missing phases and feature location
 
-  Scenario: should keep strict mode independent from other optional checks
-    Given strict scenarios with unchecked outline datasets and unmapped Pest tests
-    When the checker runs with only strict scenario structure validation
+  Scenario: should keep phased mode independent from other optional checks
+    Given phased scenarios with unchecked outline datasets and unmapped Pest tests
+    When the checker runs with only phased scenario structure validation
     Then outline dataset and reverse mapping validation should remain disabled
 
   Scenario: should report unmapped Pest tests while honoring the mapping ignore comment

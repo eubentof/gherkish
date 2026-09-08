@@ -16,11 +16,11 @@ class CheckFeaturesCommand extends Command
         .'{--feature= : Only check a specific feature file}'
         .'{--file= : Alias for --feature}'
         .'{--f= : Alias for --feature}'
-        .'{--staged : Only check feature and Pest test files staged in Git}'
-        .'{--check-outline-datasets : Validate Scenario Outline datasets against their Examples tables}'
-        .'{--check-unmapped-tests : Validate that every Pest test maps to a Gherkin scenario}'
-        .'{--strict : Require every Scenario and Scenario Outline to contain Given, When, and Then phases}'
-        .'{--descriptive : Show every scenario, step, and Examples table}'
+        .'{--s|staged : Only check feature and Pest test files staged in Git}'
+        .'{--o|outlined : Validate Scenario Outline datasets against their Examples tables}'
+        .'{--u|unmapped : Validate that every Pest test maps to a Gherkin scenario}'
+        .'{--p|phased : Require every Scenario and Scenario Outline to contain Given, When, and Then phases}'
+        .'{--l|long : Show every scenario, step, and Examples table}'
         .'{--snapshot= : Write the coverage snapshot JSON to the given path}';
 
     protected $description = 'Verify that every feature scenario has a matching Pest implementation.';
@@ -68,11 +68,11 @@ class CheckFeaturesCommand extends Command
 
     private function assertStagedSelectionIsCompatible(): void
     {
-        foreach (['FEATURE_PARITY_DIR', 'FEATURE_PARITY_FILE', 'FEATURE_PARITY_FEATURE'] as $key) {
+        foreach (['GHERKISH_DIR', 'GHERKISH_FILE', 'GHERKISH_FEATURE'] as $key) {
             $value = getenv($key);
             if (is_string($value) && $value !== '') {
                 throw new FeatureParityConfigurationException(
-                    'The --staged option cannot be combined with --dir, --feature, --file, or --f.'
+                    'The --staged/-s option cannot be combined with --dir, --feature, --file, or --f.'
                 );
             }
         }
@@ -80,7 +80,7 @@ class CheckFeaturesCommand extends Command
 
     private function captureEnvState(): void
     {
-        foreach (['FEATURE_PARITY_DIR', 'FEATURE_PARITY_FILE', 'FEATURE_PARITY_FEATURE', 'FEATURE_PARITY_CHECK_OUTLINE_DATASETS', 'FEATURE_PARITY_CHECK_UNMAPPED_TESTS', 'FEATURE_PARITY_STRICT', 'FEATURE_PARITY_SNAPSHOT'] as $key) {
+        foreach (['GHERKISH_DIR', 'GHERKISH_FILE', 'GHERKISH_FEATURE', 'GHERKISH_CHECK_OUTLINE_DATASETS', 'GHERKISH_CHECK_UNMAPPED_TESTS', 'GHERKISH_STRICT', 'GHERKISH_SNAPSHOT'] as $key) {
             $value = getenv($key);
             $this->envBackup[$key] = $value === false ? null : $value;
         }
@@ -90,7 +90,7 @@ class CheckFeaturesCommand extends Command
     {
         $dir = $this->option('dir');
         if (is_string($dir) && $dir !== '') {
-            $this->setEnv('FEATURE_PARITY_DIR', $dir, affectsSelection: true);
+            $this->setEnv('GHERKISH_DIR', $dir, affectsSelection: true);
         }
 
         $feature = $this->option('feature');
@@ -106,24 +106,24 @@ class CheckFeaturesCommand extends Command
         }
 
         if ($targetFile !== null) {
-            $this->setEnv('FEATURE_PARITY_FILE', $targetFile, affectsSelection: true);
+            $this->setEnv('GHERKISH_FILE', $targetFile, affectsSelection: true);
         }
 
-        if ($this->option('check-outline-datasets')) {
-            $this->setEnv('FEATURE_PARITY_CHECK_OUTLINE_DATASETS', '1');
+        if ($this->option('outlined')) {
+            $this->setEnv('GHERKISH_CHECK_OUTLINE_DATASETS', '1');
         }
 
-        if ($this->option('check-unmapped-tests')) {
-            $this->setEnv('FEATURE_PARITY_CHECK_UNMAPPED_TESTS', '1');
+        if ($this->option('unmapped')) {
+            $this->setEnv('GHERKISH_CHECK_UNMAPPED_TESTS', '1');
         }
 
-        if ($this->option('strict')) {
-            $this->setEnv('FEATURE_PARITY_STRICT', '1');
+        if ($this->option('phased')) {
+            $this->setEnv('GHERKISH_STRICT', '1');
         }
 
         $snapshot = $this->option('snapshot');
         if (is_string($snapshot) && $snapshot !== '') {
-            $this->setEnv('FEATURE_PARITY_SNAPSHOT', $snapshot);
+            $this->setEnv('GHERKISH_SNAPSHOT', $snapshot);
         }
 
         if ($this->selectionDirty) {
@@ -159,7 +159,7 @@ class CheckFeaturesCommand extends Command
 
     private function renderResult(FeatureParityResult $result, float $duration): void
     {
-        if ($this->option('descriptive')) {
+        if ($this->option('long')) {
             $this->renderDescriptiveResult($result);
         } else {
             $this->renderCompactResult($result);

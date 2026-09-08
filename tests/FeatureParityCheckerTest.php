@@ -19,14 +19,14 @@ beforeEach(function () {
 });
 
 afterEach(function () {
-    putenv('FEATURE_PARITY_DIR');
-    unset($_ENV['FEATURE_PARITY_DIR']);
-    putenv('FEATURE_PARITY_CHECK_OUTLINE_DATASETS');
-    unset($_ENV['FEATURE_PARITY_CHECK_OUTLINE_DATASETS']);
-    putenv('FEATURE_PARITY_CHECK_UNMAPPED_TESTS');
-    unset($_ENV['FEATURE_PARITY_CHECK_UNMAPPED_TESTS']);
-    putenv('FEATURE_PARITY_STRICT');
-    unset($_ENV['FEATURE_PARITY_STRICT']);
+    putenv('GHERKISH_DIR');
+    unset($_ENV['GHERKISH_DIR']);
+    putenv('GHERKISH_CHECK_OUTLINE_DATASETS');
+    unset($_ENV['GHERKISH_CHECK_OUTLINE_DATASETS']);
+    putenv('GHERKISH_CHECK_UNMAPPED_TESTS');
+    unset($_ENV['GHERKISH_CHECK_UNMAPPED_TESTS']);
+    putenv('GHERKISH_STRICT');
+    unset($_ENV['GHERKISH_STRICT']);
     FeatureParityChecker::resetSelection();
     $this->filesystem->deleteDirectory($this->fixtureRoot);
 });
@@ -116,7 +116,7 @@ describe('FeatureParityChecker parser', function () {
         $output = new BufferedOutput;
         Artisan::call('gherkish:check', [
             '--dir' => $fixture['dir'],
-            '--descriptive' => true,
+            '--long' => true,
             '--no-ansi' => true,
         ], $output);
         $featureSnapshot = reset($snapshot);
@@ -150,11 +150,11 @@ describe('FeatureParityChecker parser', function () {
             ->toContain('Pest test   tests/.feature-parity-fixtures/background-missing-before-each/FixtureTest.php:3');
     });
 
-    it('should keep Background parity independent from strict structure', function () {
+    it('should keep Background parity independent from phased structure', function () {
         /** @Given a mapped Background supplies the setup phase */
         $fixture = writeFeatureParityFixture('background-steps');
 
-        /** @When the checker validates the feature in strict mode */
+        /** @When the checker validates the feature in phased mode */
         $result = runFeatureParityFixture($fixture['dir'], strict: true);
 
         /** @Then the Background Given should not satisfy the Scenario structure */
@@ -319,7 +319,7 @@ describe('staged feature selection', function () {
         $output = new BufferedOutput;
         $exitCode = Artisan::call('gherkish:check', [
             '--staged' => true,
-            '--descriptive' => true,
+            '--long' => true,
             '--no-ansi' => true,
         ], $output);
 
@@ -339,8 +339,8 @@ describe('staged feature selection', function () {
         /** @When the feature parity command checks staged files */
         $output = new BufferedOutput;
         $exitCode = Artisan::call('gherkish:check', [
-            '--staged' => true,
-            '--descriptive' => true,
+            '-s' => true,
+            '-l' => true,
             '--no-ansi' => true,
         ], $output);
 
@@ -368,8 +368,8 @@ describe('staged feature selection', function () {
         /** @When the feature parity command checks staged files */
         $output = new BufferedOutput;
         $exitCode = Artisan::call('gherkish:check', [
-            '--staged' => true,
-            '--descriptive' => true,
+            '-s' => true,
+            '-l' => true,
             '--no-ansi' => true,
         ], $output);
 
@@ -387,8 +387,8 @@ describe('staged feature selection', function () {
         /** @When the feature parity command checks staged files */
         $output = new BufferedOutput;
         $exitCode = Artisan::call('gherkish:check', [
-            '--staged' => true,
-            '--descriptive' => true,
+            '-s' => true,
+            '-l' => true,
             '--no-ansi' => true,
         ], $output);
 
@@ -411,8 +411,8 @@ describe('staged feature selection', function () {
         /** @When the staged checker validates reverse test mappings */
         $output = new BufferedOutput;
         $exitCode = Artisan::call('gherkish:check', [
-            '--staged' => true,
-            '--check-unmapped-tests' => true,
+            '-s' => true,
+            '-u' => true,
             '--no-ansi' => true,
         ], $output);
 
@@ -431,7 +431,7 @@ describe('staged feature selection', function () {
         /** @When the feature parity command checks both selections */
         $output = new BufferedOutput;
         $exitCode = Artisan::call('gherkish:check', [
-            '--staged' => true,
+            '-s' => true,
             '--dir' => $fixture['dir'],
             '--no-ansi' => true,
         ], $output);
@@ -439,7 +439,7 @@ describe('staged feature selection', function () {
         /** @Then the command reports an incompatible selection failure */
         expect($exitCode)->toBe(1);
         expect($output->fetch())->toContain(
-            'The --staged option cannot be combined with --dir, --feature, --file, or --f.'
+            'The --staged/-s option cannot be combined with --dir, --feature, --file, or --f.'
         );
     });
 
@@ -480,13 +480,13 @@ describe('gherkish:check command', function () {
         /** @When the feature parity command checks their directory */
         $command = $this->artisan('gherkish:check', [
             '--dir' => $fixture['dir'],
-            '--descriptive' => true,
+            '--long' => true,
             '--no-ansi' => true,
         ]);
         $ansiOutput = new BufferedOutput(OutputInterface::VERBOSITY_NORMAL, false);
         $ansiExitCode = Artisan::call('gherkish:check', [
             '--dir' => $fixture['dir'],
-            '--descriptive' => true,
+            '--long' => true,
         ], $ansiOutput);
 
         /** @Then the command reports the scenario in a colored Pest-style heading and its steps as checks */
@@ -514,7 +514,7 @@ describe('gherkish:check command', function () {
             '--no-ansi' => true,
         ], $output);
 
-        /** @Then the command reports a status dot, total inner cases, and duration without descriptive checks */
+        /** @Then the command reports a status dot, total inner cases, and duration without long-form checks */
         expect($exitCode)->toBe(0);
         expect($output->fetch())
             ->toContain("  .\n")
@@ -549,17 +549,17 @@ describe('gherkish:check command', function () {
         /** @Given feature output contains placeholders matching Symfony console styles */
         $fixture = writeFeatureParityFixture('console-markup');
 
-        /** @When the feature parity command renders descriptive output */
+        /** @When the feature parity command renders long output */
         $plainOutput = new BufferedOutput;
         $plainExitCode = Artisan::call('gherkish:check', [
             '--dir' => $fixture['dir'],
-            '--descriptive' => true,
+            '--long' => true,
             '--no-ansi' => true,
         ], $plainOutput);
         $ansiOutput = new BufferedOutput(OutputInterface::VERBOSITY_NORMAL, false);
         $ansiExitCode = Artisan::call('gherkish:check', [
             '--dir' => $fixture['dir'],
-            '--descriptive' => true,
+            '--long' => true,
         ], $ansiOutput);
 
         /** @Then the placeholders should remain literal without activating console styles */
@@ -584,7 +584,7 @@ describe('gherkish:check command', function () {
         /** @When the feature parity command checks the failing directory */
         $command = $this->artisan('gherkish:check', [
             '--dir' => $fixture['dir'],
-            '--descriptive' => true,
+            '--long' => true,
             '--no-ansi' => true,
         ]);
 
@@ -631,7 +631,7 @@ describe('gherkish:check command', function () {
         /** @When the checker runs without outline dataset validation */
         $command = $this->artisan('gherkish:check', [
             '--dir' => $fixture['dir'],
-            '--descriptive' => true,
+            '--long' => true,
             '--no-ansi' => true,
         ]);
 
@@ -649,8 +649,8 @@ describe('gherkish:check command', function () {
         /** @When the feature parity command checks the outline directory */
         $command = $this->artisan('gherkish:check', [
             '--dir' => $fixture['dir'],
-            '--check-outline-datasets' => true,
-            '--descriptive' => true,
+            '--outlined' => true,
+            '--long' => true,
             '--no-ansi' => true,
         ]);
 
@@ -670,8 +670,8 @@ describe('gherkish:check command', function () {
         /** @When the checker validates the outline dataset */
         $command = $this->artisan('gherkish:check', [
             '--dir' => $fixture['dir'],
-            '--check-outline-datasets' => true,
-            '--descriptive' => true,
+            '-o' => true,
+            '-l' => true,
             '--no-ansi' => true,
         ]);
 
@@ -730,8 +730,8 @@ describe('gherkish:check command', function () {
         $result = runFeatureParityFixture($fixture['dir'], checkOutlineDatasets: true);
         $command = $this->artisan('gherkish:check', [
             '--dir' => $fixture['dir'],
-            '--check-outline-datasets' => true,
-            '--descriptive' => true,
+            '--outlined' => true,
+            '--long' => true,
             '--no-ansi' => true,
         ]);
 
@@ -760,11 +760,11 @@ describe('gherkish:check command', function () {
             ->assertSuccessful();
     });
 
-    it('should leave strict scenario structure validation disabled by default', function () {
+    it('should leave phased scenario structure validation disabled by default', function () {
         /** @Given mapped scenarios that do not contain every Given When and Then phase */
         $fixture = writeFeatureParityFixture('strict-scenario-structure');
 
-        /** @When the checker runs without strict scenario structure validation */
+        /** @When the checker runs without phased scenario structure validation */
         $result = runFeatureParityFixture($fixture['dir']);
 
         /** @Then the structurally incomplete scenarios should remain covered */
@@ -772,7 +772,7 @@ describe('gherkish:check command', function () {
         expect($result->successes)->toHaveCount(4);
     });
 
-    it('should accept complete scenario structure in strict mode', function () {
+    it('should accept complete scenario structure in phased mode', function () {
         /** @Given mapped scenarios and outlines containing Given When and Then phases */
         $fixture = writeFeatureParityFixture('strict-scenario-structure');
 
@@ -781,21 +781,21 @@ describe('gherkish:check command', function () {
             ->toContain('And another setup step')
             ->toContain('But another action is also performed');
 
-        /** @When the checker runs with strict scenario structure validation */
+        /** @When the checker runs with phased scenario structure validation */
         $result = runFeatureParityFixture($fixture['dir'], strict: true);
 
         /** @Then every structurally complete scenario should remain covered */
         expect($result->successes)->toContain('Strict scenario structure -> complete scenario structure');
     });
 
-    it('should reject incomplete scenario structure in strict mode', function () {
+    it('should reject incomplete scenario structure in phased mode', function () {
         /** @Given mapped scenarios and outlines missing Given When or Then phases */
         $fixture = writeFeatureParityFixture('strict-scenario-structure');
 
         /** @And leading secondary keywords without an established phase */
         expect(file_get_contents($fixture['featurePath']))->toContain('And an orphaned secondary setup step');
 
-        /** @When the checker runs with strict scenario structure validation */
+        /** @When the checker runs with phased scenario structure validation */
         $result = runFeatureParityFixture($fixture['dir'], strict: true);
 
         /** @Then each incomplete structure should report its missing phases and feature location */
@@ -812,15 +812,15 @@ describe('gherkish:check command', function () {
             ->toContain('tests/.feature-parity-fixtures/strict-scenario-structure/Fixture.feature:19');
     });
 
-    it('should keep strict mode independent from other optional checks', function () {
-        /** @Given strict scenarios with unchecked outline datasets and unmapped Pest tests */
+    it('should keep phased mode independent from other optional checks', function () {
+        /** @Given phased scenarios with unchecked outline datasets and unmapped Pest tests */
         $fixture = writeFeatureParityFixture('strict-independent-checks');
 
-        /** @When the checker runs with only strict scenario structure validation */
+        /** @When the checker runs with only phased scenario structure validation */
         $command = $this->artisan('gherkish:check', [
             '--dir' => $fixture['dir'],
-            '--strict' => true,
-            '--descriptive' => true,
+            '-p' => true,
+            '--long' => true,
             '--no-ansi' => true,
         ]);
 
@@ -838,7 +838,7 @@ describe('gherkish:check command', function () {
         /** @When the checker validates reverse test mappings */
         $command = $this->artisan('gherkish:check', [
             '--dir' => $fixture['dir'],
-            '--check-unmapped-tests' => true,
+            '--unmapped' => true,
             '--no-ansi' => true,
         ]);
 
@@ -983,14 +983,14 @@ function writeFeatureParityFixture(string $fixture, ?string $case = null): array
 
 function snapshotFeatureParityFixture(string $dir): array
 {
-    putenv('FEATURE_PARITY_DIR='.$dir);
-    $_ENV['FEATURE_PARITY_DIR'] = $dir;
+    putenv('GHERKISH_DIR='.$dir);
+    $_ENV['GHERKISH_DIR'] = $dir;
     FeatureParityChecker::resetSelection();
 
     $snapshot = FeatureParityChecker::snapshot();
 
-    putenv('FEATURE_PARITY_DIR');
-    unset($_ENV['FEATURE_PARITY_DIR']);
+    putenv('GHERKISH_DIR');
+    unset($_ENV['GHERKISH_DIR']);
     FeatureParityChecker::resetSelection();
 
     return $snapshot;
@@ -1001,28 +1001,28 @@ function runFeatureParityFixture(
     bool $checkOutlineDatasets = false,
     bool $strict = false,
 ): FeatureParityResult {
-    putenv('FEATURE_PARITY_DIR='.$dir);
-    $_ENV['FEATURE_PARITY_DIR'] = $dir;
+    putenv('GHERKISH_DIR='.$dir);
+    $_ENV['GHERKISH_DIR'] = $dir;
     if ($checkOutlineDatasets) {
-        putenv('FEATURE_PARITY_CHECK_OUTLINE_DATASETS=1');
-        $_ENV['FEATURE_PARITY_CHECK_OUTLINE_DATASETS'] = '1';
+        putenv('GHERKISH_CHECK_OUTLINE_DATASETS=1');
+        $_ENV['GHERKISH_CHECK_OUTLINE_DATASETS'] = '1';
     }
     if ($strict) {
-        putenv('FEATURE_PARITY_STRICT=1');
-        $_ENV['FEATURE_PARITY_STRICT'] = '1';
+        putenv('GHERKISH_STRICT=1');
+        $_ENV['GHERKISH_STRICT'] = '1';
     }
     FeatureParityChecker::resetSelection();
 
     $result = FeatureParityChecker::run();
 
-    putenv('FEATURE_PARITY_DIR');
-    unset($_ENV['FEATURE_PARITY_DIR']);
-    putenv('FEATURE_PARITY_CHECK_OUTLINE_DATASETS');
-    unset($_ENV['FEATURE_PARITY_CHECK_OUTLINE_DATASETS']);
-    putenv('FEATURE_PARITY_CHECK_UNMAPPED_TESTS');
-    unset($_ENV['FEATURE_PARITY_CHECK_UNMAPPED_TESTS']);
-    putenv('FEATURE_PARITY_STRICT');
-    unset($_ENV['FEATURE_PARITY_STRICT']);
+    putenv('GHERKISH_DIR');
+    unset($_ENV['GHERKISH_DIR']);
+    putenv('GHERKISH_CHECK_OUTLINE_DATASETS');
+    unset($_ENV['GHERKISH_CHECK_OUTLINE_DATASETS']);
+    putenv('GHERKISH_CHECK_UNMAPPED_TESTS');
+    unset($_ENV['GHERKISH_CHECK_UNMAPPED_TESTS']);
+    putenv('GHERKISH_STRICT');
+    unset($_ENV['GHERKISH_STRICT']);
     FeatureParityChecker::resetSelection();
 
     return $result;

@@ -287,7 +287,7 @@ final class FeatureParityChecker
 
     public static function maybeWriteSnapshot(): void
     {
-        $target = getenv('FEATURE_PARITY_SNAPSHOT') ?: null;
+        $target = getenv('GHERKISH_SNAPSHOT') ?: null;
         if ($target === null || $target === '') {
             return;
         }
@@ -393,8 +393,8 @@ final class FeatureParityChecker
             return self::$selection;
         }
 
-        $rawDir = getenv('FEATURE_PARITY_DIR') ?: null;
-        $rawFile = getenv('FEATURE_PARITY_FILE') ?: (getenv('FEATURE_PARITY_FEATURE') ?: null);
+        $rawDir = getenv('GHERKISH_DIR') ?: null;
+        $rawFile = getenv('GHERKISH_FILE') ?: (getenv('GHERKISH_FEATURE') ?: null);
 
         $argv = $_SERVER['argv'] ?? [];
         $cliDir = self::extractCliOption($argv, '--dir');
@@ -1018,7 +1018,7 @@ final class FeatureParityChecker
     private static function shouldCheckOutlineDatasets(): bool
     {
         return filter_var(
-            getenv('FEATURE_PARITY_CHECK_OUTLINE_DATASETS') ?: false,
+            getenv('GHERKISH_CHECK_OUTLINE_DATASETS') ?: false,
             FILTER_VALIDATE_BOOL,
         );
     }
@@ -1026,7 +1026,7 @@ final class FeatureParityChecker
     private static function shouldCheckUnmappedTests(): bool
     {
         return filter_var(
-            getenv('FEATURE_PARITY_CHECK_UNMAPPED_TESTS') ?: false,
+            getenv('GHERKISH_CHECK_UNMAPPED_TESTS') ?: false,
             FILTER_VALIDATE_BOOL,
         );
     }
@@ -1034,7 +1034,7 @@ final class FeatureParityChecker
     private static function shouldCheckStrictScenarioStructure(): bool
     {
         return filter_var(
-            getenv('FEATURE_PARITY_STRICT') ?: false,
+            getenv('GHERKISH_STRICT') ?: false,
             FILTER_VALIDATE_BOOL,
         );
     }

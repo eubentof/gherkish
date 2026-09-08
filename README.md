@@ -110,7 +110,7 @@ The feature must use the normal same-directory pairing convention, such as
 outline contains exactly one `Examples` block and required when it contains
 more than one.
 
-With `--check-outline-datasets`, `gherkish:check` also verifies that every
+With `--outlined` (or `-o`), `gherkish:check` also verifies that every
 Scenario Outline maps its Examples rows to the matching Pest test. Use
 `Gherkish::examples()`, combine labeled blocks with
 `Gherkish::examples('First label', 'Second label')`, or provide a static literal
@@ -143,7 +143,7 @@ the scenario description, step docblocks, and executable code below each step.
 ## Background and beforeEach mapping
 
 Background parity is part of the default check and is independent from
-`--strict`. When a feature declares a `Background`, every matching scenario
+`--phased`. When a feature declares a `Background`, every matching scenario
 test must have an applicable Pest `beforeEach()` whose step docblocks map all
 Background steps. As with scenario steps, each mapped docblock must have
 executable PHP directly below it.
@@ -193,7 +193,7 @@ implementations into an applicable `beforeEach()`.
 
 ## Reverse test mapping
 
-Use `--check-unmapped-tests` to also verify parity in the other direction:
+Use `--unmapped` (or `-u`) to also verify parity in the other direction:
 every Pest `test()` or `it()` block in the selected scope must map to a Scenario
 in its paired feature file or in a feature file that lists the test under
 `@tests:`.
@@ -211,27 +211,27 @@ test('covers an internal implementation detail', function () {
 Feature-to-test scenario and step checks still run normally. The ignore comment
 only skips the opt-in reverse mapping check for that Pest test.
 
-## Strict scenario structure
+## Phased scenario structure
 
-Use `--strict` to require every `Scenario` and `Scenario Outline` to contain
-effective `Given`, `When`, and `Then` phases. `And` and `But` inherit the phase
+Use `--phased` or `-p` to require every `Scenario` and `Scenario Outline` to
+contain effective `Given`, `When`, and `Then` phases. `And` and `But` inherit the phase
 established by the preceding primary keyword, but cannot establish a phase when
 they appear before any `Given`, `When`, or `Then` step.
 
-Strict structure validation is opt-in and independent from
-`--check-outline-datasets` and `--check-unmapped-tests`. It validates only the
+Phased structure validation is opt-in and independent from
+`--outlined` and `--unmapped`. It validates only the
 steps declared inside each scenario; `Background` steps are not included in
 this structure check.
 
 ```bash
-php artisan gherkish:check --strict
+php artisan gherkish:check --phased
 ```
 
 ## Command options
 
 By default, the checker prints one compact status character per scenario: a
 green `.` for covered, a red `F` for failed, or a yellow `S` for skipped.
-Failure details are collected after the progress dots. Use `--descriptive` to
+Failure details are collected after the progress dots. Use `--long` or `-l` to
 show the full scenario, step, and Examples output. The summary includes the
 total inner step cases checked across all scenarios and the command duration.
 
@@ -239,18 +239,21 @@ Pass these options to `php artisan gherkish:check`:
 
 | Option | Description | Environment variable |
 | --- | --- | --- |
-| `--dir=tests/Feature` | Limit the check to feature files and, for reverse validation, Pest tests inside a directory. | `FEATURE_PARITY_DIR` |
-| `--feature=tests/Feature/Users/CreateUser.feature` | Check a specific feature file. | `FEATURE_PARITY_FILE` or `FEATURE_PARITY_FEATURE` |
-| `--file=tests/Feature/Users/CreateUser.feature` | Alias for `--feature`. | `FEATURE_PARITY_FILE` or `FEATURE_PARITY_FEATURE` |
-| `--f=tests/Feature/Users/CreateUser.feature` | Short alias for `--feature`. | `FEATURE_PARITY_FILE` or `FEATURE_PARITY_FEATURE` |
-| `--staged` | Check only staged feature files and features paired with staged Pest tests. Cannot be combined with a path filter. | — |
-| `--check-outline-datasets` | Validate Scenario Outline datasets against their Examples tables. | `FEATURE_PARITY_CHECK_OUTLINE_DATASETS=1` |
-| `--check-unmapped-tests` | Validate that every Pest test maps to a Gherkin scenario. | `FEATURE_PARITY_CHECK_UNMAPPED_TESTS=1` |
-| `--strict` | Require every Scenario and Scenario Outline to contain effective Given, When, and Then phases. | `FEATURE_PARITY_STRICT=1` |
-| `--descriptive` | Show every scenario, step, and Examples table instead of compact status dots. | — |
-| `--snapshot=storage/app/feature-parity.json` | Write the coverage snapshot as JSON. | `FEATURE_PARITY_SNAPSHOT` |
+| `--dir=tests/Feature` | Limit the check to feature files and, for reverse validation, Pest tests inside a directory. | `GHERKISH_DIR` |
+| `--feature=tests/Feature/Users/CreateUser.feature` | Check a specific feature file. | `GHERKISH_FILE` or `GHERKISH_FEATURE` |
+| `--file=tests/Feature/Users/CreateUser.feature` | Alias for `--feature`. | `GHERKISH_FILE` or `GHERKISH_FEATURE` |
+| `--f=tests/Feature/Users/CreateUser.feature` | Short alias for `--feature`. | `GHERKISH_FILE` or `GHERKISH_FEATURE` |
+| `--staged`, `-s` | Check only staged feature files and features paired with staged Pest tests. Cannot be combined with a path filter. | — |
+| `--outlined`, `-o` | Validate Scenario Outline datasets against their Examples tables. | `GHERKISH_CHECK_OUTLINE_DATASETS=1` |
+| `--unmapped`, `-u` | Validate that every Pest test maps to a Gherkin scenario. | `GHERKISH_CHECK_UNMAPPED_TESTS=1` |
+| `--phased`, `-p` | Require every Scenario and Scenario Outline to contain effective Given, When, and Then phases. | `GHERKISH_STRICT=1` |
+| `--long`, `-l` | Show every scenario, step, and Examples table instead of compact status dots. | — |
+| `--snapshot=storage/app/feature-parity.json` | Write the coverage snapshot as JSON. | `GHERKISH_SNAPSHOT` |
 
-Use `--staged` in pre-commit workflows to select added, copied, modified, and
+Configuration variables use the `GHERKISH_` prefix. Replace any previous
+`FEATURE_PARITY_*` variables in local environments and CI configuration.
+
+Use `--staged` or `-s` in pre-commit workflows to select added, copied, modified, and
 renamed files from the Git index:
 
 ```bash
