@@ -84,7 +84,7 @@ final class ExampleDatasetResolver
             }
 
             throw new ExamplesException(sprintf(
-                'Scenario Outline "%s" has multiple Examples blocks. Pass one of these labels to Gherkish::examples(): %s.',
+                'Scenario Outline "%s" has multiple Examples blocks. Pass one or more of these labels to Gherkish::examples(): %s.',
                 $outline->title,
                 $this->formatLabels($outline),
             ));

@@ -726,10 +726,7 @@ test('labeled states are handled', function (string $state, string $result) {
     expect($state)->not->toBeEmpty();
     /** @Then the result is "<result>" */
     expect($result)->not->toBeEmpty();
-})->with([
-    ...Gherkish::examples('Active states'),
-    ...Gherkish::examples('Inactive states'),
-]);
+})->with(Gherkish::examples('Active states', 'Inactive states'));
 PHP
         );
 
@@ -849,6 +846,47 @@ PHP,
         ]);
     });
 
+    it('should combine multiple examples blocks by label', function () {
+        /** @Given a scenario outline with multiple labeled examples blocks */
+        $fixture = writeFeatureParityFixture(
+            'combined-examples-dataset',
+            <<<'FEATURE'
+Feature: Login
+  Scenario Outline: User logs in
+    Given a user with email "<email>"
+    Then the result should be "<result>"
+
+    Examples: Valid credentials
+      | email         | result  |
+      | john@test.com | success |
+      | jane@test.com | success |
+
+    Examples: Invalid credentials
+      | email         | result  |
+      | john@test.com | failure |
+      | jane@test.com | failure |
+FEATURE,
+            <<<'PHP'
+<?php
+
+use Gherkish\Gherkish;
+
+return Gherkish::examples('Invalid credentials', 'Valid credentials');
+PHP,
+        );
+
+        /** @When an examples dataset is requested with multiple labels */
+        $rows = require $fixture['testPath'];
+
+        /** @Then rows from every selected block are returned in label order */
+        expect($rows)->toBe([
+            ['email' => 'john@test.com', 'result' => 'failure'],
+            ['email' => 'jane@test.com', 'result' => 'failure'],
+            ['email' => 'john@test.com', 'result' => 'success'],
+            ['email' => 'jane@test.com', 'result' => 'success'],
+        ]);
+    });
+
     it('should require a label for multiple examples blocks', function () {
         /** @Given a scenario outline with multiple examples blocks */
         $fixture = writeLoginExamplesFixture('required-examples-label');
@@ -859,7 +897,7 @@ PHP,
         /** @Then the available labels are reported in the error */
         expect($resolve)->toThrow(
             ExamplesException::class,
-            'Pass one of these labels to Gherkish::examples(): "Valid credentials", "Invalid credentials"',
+            'Pass one or more of these labels to Gherkish::examples(): "Valid credentials", "Invalid credentials"',
         );
     });
 

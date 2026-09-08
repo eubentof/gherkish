@@ -747,15 +747,33 @@ final class FeatureParityChecker
     {
         $calls = [];
         $expression = implode("\n", $withArguments);
-        preg_match_all(
-            '/(?:\\\\?Gherkish\\\\)?Gherkish::examples\s*\(\s*(?:(?<quote>[\'\"])(?<label>.*?)\k<quote>\s*)?\)/s',
-            $expression,
-            $matches,
-            PREG_SET_ORDER,
-        );
+        $offset = 0;
 
-        foreach ($matches as $match) {
-            $calls[] = ($match['quote'] ?? '') === '' ? null : stripcslashes($match['label']);
+        while (preg_match(
+            '/(?:\\\\?Gherkish\\\\)?Gherkish::examples\s*\(/',
+            $expression,
+            $match,
+            PREG_OFFSET_CAPTURE,
+            $offset,
+        )) {
+            $opening = $match[0][1] + strlen($match[0][0]) - 1;
+            $closing = self::matchingDelimiterOffset($expression, $opening, '(', ')');
+            if ($closing === null) {
+                return false;
+            }
+
+            $labels = self::literalStringArguments(substr($expression, $opening + 1, $closing - $opening - 1));
+            if ($labels === null) {
+                return false;
+            }
+
+            if ($labels === []) {
+                $calls[] = null;
+            } else {
+                array_push($calls, ...$labels);
+            }
+
+            $offset = $closing + 1;
         }
 
         if ($calls === [] || $blocks === []) {
@@ -780,6 +798,57 @@ final class FeatureParityChecker
         sort($calls);
 
         return $calls === $expectedLabels;
+    }
+
+    /**
+     * @return list<string|null>|null
+     */
+    private static function literalStringArguments(string $arguments): ?array
+    {
+        if (trim($arguments) === '') {
+            return [];
+        }
+
+        $labels = [];
+        $expectValue = true;
+
+        foreach (token_get_all('<?php '.$arguments) as $token) {
+            if (is_array($token)) {
+                if (in_array($token[0], [T_OPEN_TAG, T_WHITESPACE], true)) {
+                    continue;
+                }
+
+                if ($expectValue && $token[0] === T_CONSTANT_ENCAPSED_STRING) {
+                    $quote = $token[1][0];
+                    $value = substr($token[1], 1, -1);
+                    $labels[] = $quote === "'"
+                        ? str_replace(['\\\\', "\\'"], ['\\', "'"], $value)
+                        : stripcslashes($value);
+                    $expectValue = false;
+
+                    continue;
+                }
+
+                if ($expectValue && $token[0] === T_STRING && strtolower($token[1]) === 'null') {
+                    $labels[] = null;
+                    $expectValue = false;
+
+                    continue;
+                }
+
+                return null;
+            }
+
+            if ($token === ',' && ! $expectValue) {
+                $expectValue = true;
+
+                continue;
+            }
+
+            return null;
+        }
+
+        return $expectValue ? null : $labels;
     }
 
     /**

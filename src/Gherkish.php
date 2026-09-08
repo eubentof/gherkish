@@ -14,7 +14,7 @@ final class Gherkish
      *
      * @return list<array<string, string>>
      */
-    public static function examples(?string $label = null): array
+    public static function examples(?string ...$labels): array
     {
         foreach (debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS) as $frame) {
             $file = $frame['file'] ?? null;
@@ -24,7 +24,17 @@ final class Gherkish
                 continue;
             }
 
-            return (new ExampleDatasetResolver)->resolve($file, $line, $label);
+            $resolver = new ExampleDatasetResolver;
+            if ($labels === []) {
+                return $resolver->resolve($file, $line);
+            }
+
+            $rows = [];
+            foreach ($labels as $label) {
+                array_push($rows, ...$resolver->resolve($file, $line, $label));
+            }
+
+            return $rows;
         }
 
         throw new ExamplesException('Gherkish could not determine the Pest test that requested the examples dataset.');

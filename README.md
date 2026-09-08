@@ -87,7 +87,7 @@ it('User logs in', function (string $email, string $password, string $result) {
 ```
 
 When an outline has multiple `Examples` blocks, give each one a label and pass
-the desired label:
+one or more desired labels. Rows are combined in the same order as the labels:
 
 ```gherkin
 Examples: Valid credentials
@@ -102,10 +102,7 @@ Examples: Invalid credentials
 ```php
 it('User logs in', function (string $email, string $password, string $result) {
     // ...
-})->with([
-    ...Gherkish::examples('Valid credentials'),
-    ...Gherkish::examples('Invalid credentials'),
-]);
+})->with(Gherkish::examples('Valid credentials', 'Invalid credentials'));
 ```
 
 The feature must use the normal same-directory pairing convention, such as
@@ -115,9 +112,9 @@ more than one.
 
 With `--check-outline-datasets`, `gherkish:check` also verifies that every
 Scenario Outline maps its Examples rows to the matching Pest test. Use
-`Gherkish::examples()`, combine labeled
-blocks with `Gherkish::examples('Label')`, or provide a static literal dataset
-whose values exactly match the Examples table:
+`Gherkish::examples()`, combine labeled blocks with
+`Gherkish::examples('First label', 'Second label')`, or provide a static literal
+dataset whose values exactly match the Examples table:
 
 ```php
 test('User logs in', function (string $email, string $password, string $result) {

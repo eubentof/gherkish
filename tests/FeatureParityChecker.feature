@@ -119,6 +119,11 @@ Feature: FeatureParityChecker parsing
     When an examples dataset is requested by label
     Then only rows from the matching examples block are returned
 
+  Scenario: should combine multiple examples blocks by label
+    Given a scenario outline with multiple labeled examples blocks
+    When an examples dataset is requested with multiple labels
+    Then rows from every selected block are returned in label order
+
   Scenario: should require a label for multiple examples blocks
     Given a scenario outline with multiple examples blocks
     When the examples dataset is requested without a label
