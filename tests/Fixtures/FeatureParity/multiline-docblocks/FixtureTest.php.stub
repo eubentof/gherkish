@@ -1,0 +1,15 @@
+<?php
+
+it('multiline docblock handling', function () {
+    /**
+     * @Given the first step is documented plainly
+     */
+    /**
+     * @And the second step uses a multiline docblock
+     *   that spans multiple lines
+     */
+    /**
+     * @But the third step still needs to match
+     */
+});
+

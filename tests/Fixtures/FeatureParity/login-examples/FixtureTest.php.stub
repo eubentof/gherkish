@@ -1,0 +1,5 @@
+<?php
+
+it('User logs in', function (string $email, string $password, string $result) {
+})->with(Gherkish::examples('Valid credentials'));
+

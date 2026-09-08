@@ -1,0 +1,15 @@
+<?php
+
+it('should read tests defined with it helper', function () {
+    visit('/');
+    /** @Given the scenario expects simple steps */
+    /** @When the scenario runs through the parser */
+    /** @Then the parser notes each step */
+});
+
+test('should read tests defined with test helper', function () {
+    /** @Given the scenario expects simple steps */
+    /** @When the scenario runs through the parser */
+    /** @Then the parser notes each step */
+});
+

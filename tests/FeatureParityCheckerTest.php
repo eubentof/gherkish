@@ -28,37 +28,7 @@ afterEach(function () {
 describe('FeatureParityChecker parser', function () {
     it('should report coverage for both Pest helpers', function () {
         /** @Given a feature file containing scenarios for both Pest helpers */
-        $fixture = writeFeatureParityFixture(
-            'dual-helpers',
-            <<<'FEATURE'
-Feature: Parser dual helpers
-  Scenario: should read tests defined with it helper
-    Given the scenario expects simple steps
-    When the scenario runs through the parser
-    Then the parser notes each step
-
-  Scenario: should read tests defined with test helper
-    Given the scenario expects simple steps
-    When the scenario runs through the parser
-    Then the parser notes each step
-FEATURE,
-            <<<'PHP'
-<?php
-
-it('should read tests defined with it helper', function () {
-    visit('/');
-    /** @Given the scenario expects simple steps */
-    /** @When the scenario runs through the parser */
-    /** @Then the parser notes each step */
-});
-
-test('should read tests defined with test helper', function () {
-    /** @Given the scenario expects simple steps */
-    /** @When the scenario runs through the parser */
-    /** @Then the parser notes each step */
-});
-PHP
-        );
+        $fixture = writeFeatureParityFixture('dual-helpers');
 
         /** @And matching Pest tests with step comments */
         expect(file_exists($fixture['testPath']))->toBeTrue();
@@ -80,26 +50,7 @@ PHP
 
     it('should ignore helper names inside other functions', function () {
         /** @Given a feature file that references visit inside a test body */
-        $fixture = writeFeatureParityFixture(
-            'visit-helper',
-            <<<'FEATURE'
-Feature: Parser visit helper
-  Scenario: should ignore helper names inside other functions
-    Given the scenario uses the visit helper inside the Pest test
-    When the parser inspects the file for Pest declarations
-    Then it should not mis-detect an extra test
-FEATURE,
-            <<<'PHP'
-<?php
-
-it('should ignore helper names inside other functions', function () {
-    visit('/careers');
-    /** @Given the scenario uses the visit helper inside the Pest test */
-    /** @When the parser inspects the file for Pest declarations */
-    /** @Then it should not mis-detect an extra test */
-});
-PHP
-        );
+        $fixture = writeFeatureParityFixture('visit-helper');
 
         /** @When the checker snapshots that feature directory */
         $snapshot = snapshotFeatureParityFixture($fixture['dir']);
@@ -116,25 +67,7 @@ PHP
 
     it('should report missing steps when docblocks are incomplete', function () {
         /** @Given a feature file with a scenario that has undocumented steps */
-        $fixture = writeFeatureParityFixture(
-            'missing-steps',
-            <<<'FEATURE'
-Feature: Parser missing steps
-  Scenario: should report missing steps when docblocks are incomplete
-    Given only the first step is documented
-    And the second step lacks documentation
-    When the parser inspects the file for missing annotations
-    Then the missing steps should be flagged
-FEATURE,
-            <<<'PHP'
-<?php
-
-it('should report missing steps when docblocks are incomplete', function () {
-    /** @Given only the first step is documented */
-    expect(true)->toBeTrue();
-});
-PHP
-        );
+        $fixture = writeFeatureParityFixture('missing-steps');
 
         /** @When the checker snapshots that feature directory */
         $snapshot = snapshotFeatureParityFixture($fixture['dir']);
@@ -151,25 +84,7 @@ PHP
 
     it('should match placeholder titles with dataset values', function () {
         /** @Given a scenario title that contains placeholder tokens */
-        $fixture = writeFeatureParityFixture(
-            'placeholder-titles',
-            <<<'FEATURE'
-Feature: Parser placeholder titles
-  Scenario: should match "<state>" placeholder titles
-    Given placeholders appear in the scenario title
-    When the parser compares the title with actual test names
-    Then placeholder tokens are treated as flexible text
-FEATURE,
-            <<<'PHP'
-<?php
-
-test('should match "active" placeholder titles', function () {
-    /** @Given placeholders appear in the scenario title */
-    /** @When the parser compares the title with actual test names */
-    /** @Then placeholder tokens are treated as flexible text */
-});
-PHP
-        );
+        $fixture = writeFeatureParityFixture('placeholder-titles');
 
         /** @And a Pest test whose name replaces the placeholder with a dataset value */
         expect($fixture['testPath'])->not->toBeNull();
@@ -184,26 +99,7 @@ PHP
 
     it('should ignore background steps when computing coverage', function () {
         /** @Given a feature file with background steps and scenario steps */
-        $fixture = writeFeatureParityFixture(
-            'background-steps',
-            <<<'FEATURE'
-Feature: Parser background handling
-  Background:
-    Given a shared setup step for the feature
-
-  Scenario: scenario-specific path
-    When the scenario performs a unique action
-    Then only scenario steps should be recorded
-FEATURE,
-            <<<'PHP'
-<?php
-
-it('scenario-specific path', function () {
-    /** @When the scenario performs a unique action */
-    /** @Then only scenario steps should be recorded */
-});
-PHP
-        );
+        $fixture = writeFeatureParityFixture('background-steps');
 
         /** @And matching Pest tests documenting only scenario steps */
         expect($fixture['testPath'])->not->toBeNull();
@@ -220,32 +116,7 @@ PHP
 
     it('should match And/But steps with multiline docblocks', function () {
         /** @Given a feature file containing And and But steps */
-        $fixture = writeFeatureParityFixture(
-            'multiline-docblocks',
-            <<<'FEATURE'
-Feature: Parser multiline docblocks
-  Scenario: multiline docblock handling
-    Given the first step is documented plainly
-    And the second step uses a multiline docblock that spans multiple lines
-    But the third step still needs to match
-FEATURE,
-            <<<'PHP'
-<?php
-
-it('multiline docblock handling', function () {
-    /**
-     * @Given the first step is documented plainly
-     */
-    /**
-     * @And the second step uses a multiline docblock
-     *   that spans multiple lines
-     */
-    /**
-     * @But the third step still needs to match
-     */
-});
-PHP
-        );
+        $fixture = writeFeatureParityFixture('multiline-docblocks');
 
         /** @And the Pest test documents them using multiline docblocks */
         expect($fixture['testPath'])->not->toBeNull();
@@ -261,29 +132,7 @@ PHP
 
     it('should parse scenario outlines while ignoring example rows', function () {
         /** @Given a scenario outline that contains an examples table */
-        $fixture = writeFeatureParityFixture(
-            'scenario-outlines',
-            <<<'FEATURE'
-Feature: Parser scenario outlines
-  Scenario Outline: outline coverage
-    Given outline step for <state>
-    When the parser inspects the outline
-    Then the outline remains singular
-
-    Examples:
-      | state |
-      | active |
-FEATURE,
-            <<<'PHP'
-<?php
-
-test('outline coverage', function () {
-    /** @Given outline step for <state> */
-    /** @When the parser inspects the outline */
-    /** @Then the outline remains singular */
-});
-PHP
-        );
+        $fixture = writeFeatureParityFixture('scenario-outlines');
 
         /** @And a Pest test that documents the outline steps using placeholders */
         expect($fixture['testPath'])->not->toBeNull();
@@ -300,32 +149,7 @@ PHP
 
     it('should reject step docblocks without executable code directly below them', function () {
         /** @Given a Pest test contains step docblocks followed by another step, a comment, or a blank line */
-        $fixture = writeFeatureParityFixture(
-            'unimplemented-step-docblocks',
-            <<<'FEATURE'
-Feature: Step implementations
-  Scenario: invalid step implementations
-    Given a step followed by another step docblock
-    When a step is followed by executable code
-    And a step followed by a regular comment
-    Then a step followed by a blank line
-FEATURE,
-            <<<'PHP'
-<?php
-
-test('invalid step implementations', function () {
-    /** @Given a step followed by another step docblock */
-    /** @When a step is followed by executable code */
-    expect(true)->toBeTrue();
-    /** @And a step followed by a regular comment */
-    // This comment cannot implement the step.
-    expect(true)->toBeTrue();
-    /** @Then a step followed by a blank line */
-
-    expect(true)->toBeTrue();
-});
-PHP
-        );
+        $fixture = writeFeatureParityFixture('unimplemented-step-docblocks');
 
         /** @When the checker runs for that Pest test */
         $result = runFeatureParityFixture($fixture['dir']);
@@ -346,16 +170,7 @@ PHP
 
     it('should flag missing paired test files', function () {
         /** @Given a feature file without a corresponding Pest test file */
-        $fixture = writeFeatureParityFixture(
-            'missing-test-file',
-            <<<'FEATURE'
-Feature: Parser missing test file
-  Scenario: orphan scenario
-    Given there is no matching Pest test implementation
-    When the checker evaluates coverage
-    Then it should report missing steps
-FEATURE
-        );
+        $fixture = writeFeatureParityFixture('missing-test-file');
 
         /** @When the checker runs */
         $result = runFeatureParityFixture($fixture['dir']);
@@ -390,28 +205,7 @@ describe('FeatureParityChecker discovery', function () {
 describe('gherkish:check command', function () {
     it('should register the package command and report successful parity', function () {
         /** @Given a feature and test with matching scenarios and steps */
-        $fixture = writeFeatureParityFixture(
-            'command-success',
-            <<<'FEATURE'
-Feature: Command integration
-  Scenario: should run through Artisan
-    Given a mapped command scenario
-    When the package command runs
-    Then it exits successfully
-FEATURE,
-            <<<'PHP'
-<?php
-
-it('should run through Artisan', function () {
-    /** @Given a mapped command scenario */
-    expect(true)->toBeTrue();
-    /** @When the package command runs */
-    expect(true)->toBeTrue();
-    /** @Then it exits successfully */
-    expect(true)->toBeTrue();
-});
-PHP
-        );
+        $fixture = writeFeatureParityFixture('command-success');
 
         /** @When the feature parity command checks their directory */
         $command = $this->artisan('gherkish:check', [
@@ -437,39 +231,7 @@ PHP
 
     it('should render failed command checks in a Pest-style test file group', function () {
         /** @Given a feature and test with an unimplemented step */
-        $fixture = writeFeatureParityFixture(
-            'command-failure',
-            <<<'FEATURE'
-Feature: Command integration
-  Scenario: should reject an empty step
-    Given a mapped command scenario
-    When the package command runs
-    Then it exits successfully
-
-  Scenario: should accept implemented steps
-    Given another mapped command scenario
-    Then its implementation is accepted
-FEATURE,
-            <<<'PHP'
-<?php
-
-test('should reject an empty step', function () {
-    /** @Given a mapped command scenario */
-
-    /** @When the package command runs */
-    expect(true)->toBeTrue();
-    /** @Then it exits successfully */
-    expect(true)->toBeTrue();
-});
-
-test('should accept implemented steps', function () {
-    /** @Given another mapped command scenario */
-    expect(true)->toBeTrue();
-    /** @Then its implementation is accepted */
-    expect(true)->toBeTrue();
-});
-PHP
-        );
+        $fixture = writeFeatureParityFixture('command-failure');
 
         /** @When the feature parity command checks the failing directory */
         $command = $this->artisan('gherkish:check', [
@@ -494,29 +256,7 @@ PHP
 
     it('should leave scenario outline dataset validation disabled by default', function () {
         /** @Given a scenario outline whose Pest test has no dataset and no validation flag */
-        $fixture = writeFeatureParityFixture(
-            'outline-validation-disabled',
-            <<<'FEATURE'
-Feature: State datasets
-  Scenario Outline: unchecked states are handled
-    Given the state is "<state>"
-    Then it is accepted
-
-    Examples:
-      | state  |
-      | active |
-FEATURE,
-            <<<'PHP'
-<?php
-
-test('unchecked states are handled', function () {
-    /** @Given the state is "<state>" */
-    expect(true)->toBeTrue();
-    /** @Then it is accepted */
-    expect(true)->toBeTrue();
-});
-PHP
-        );
+        $fixture = writeFeatureParityFixture('outline-validation-disabled');
 
         /** @When the checker runs without outline dataset validation */
         $command = $this->artisan('gherkish:check', [
@@ -533,36 +273,7 @@ PHP
 
     it('should render scenario outline examples as a Gherkin table', function () {
         /** @Given a scenario outline with example rows and a matching Pest test */
-        $fixture = writeFeatureParityFixture(
-            'command-examples',
-            <<<'FEATURE'
-Feature: Login datasets
-  Scenario Outline: User logs in
-    Given a user with email "<email>"
-    When they log in with password "<password>"
-    Then the result should be "<result>"
-
-    Examples:
-      | email            | password | result  |
-      | john@test.com    | correct  | success |
-      | missing@test.com | anything | failure |
-FEATURE,
-            <<<'PHP'
-<?php
-
-test('User logs in', function () {
-    /** @Given a user with email "<email>" */
-    expect(true)->toBeTrue();
-    /** @When they log in with password "<password>" */
-    expect(true)->toBeTrue();
-    /** @Then the result should be "<result>" */
-    expect(true)->toBeTrue();
-})->with([
-    ['john@test.com', 'correct', 'success'],
-    ['missing@test.com', 'anything', 'failure'],
-]);
-PHP
-        );
+        $fixture = writeFeatureParityFixture('command-examples');
 
         /** @When the feature parity command checks the outline directory */
         $command = $this->artisan('gherkish:check', [
@@ -582,29 +293,7 @@ PHP
 
     it('should require a mapped Pest dataset for scenario outlines', function () {
         /** @Given a scenario outline whose matching Pest test has no dataset */
-        $fixture = writeFeatureParityFixture(
-            'outline-without-dataset',
-            <<<'FEATURE'
-Feature: State datasets
-  Scenario Outline: state is handled
-    Given the state is "<state>"
-    Then it is accepted
-
-    Examples:
-      | state  |
-      | active |
-FEATURE,
-            <<<'PHP'
-<?php
-
-test('state is handled', function () {
-    /** @Given the state is "<state>" */
-    expect(true)->toBeTrue();
-    /** @Then it is accepted */
-    expect(true)->toBeTrue();
-});
-PHP
-        );
+        $fixture = writeFeatureParityFixture('outline-without-dataset');
 
         /** @When the checker validates the outline dataset */
         $command = $this->artisan('gherkish:check', [
@@ -623,33 +312,7 @@ PHP
 
     it('should accept explicit arrays matching scenario outline examples', function () {
         /** @Given a scenario outline whose Pest dataset is a literal array of its example values */
-        $fixture = writeFeatureParityFixture(
-            'outline-explicit-dataset',
-            <<<'FEATURE'
-Feature: State datasets
-  Scenario Outline: explicit states are handled
-    Given the state is "<state>"
-    Then the result is "<result>"
-
-    Examples:
-      | state    | result   |
-      | active   | accepted |
-      | inactive | rejected |
-FEATURE,
-            <<<'PHP'
-<?php
-
-test('explicit states are handled', function (string $state, string $result) {
-    /** @Given the state is "<state>" */
-    expect($state)->not->toBeEmpty();
-    /** @Then the result is "<result>" */
-    expect($result)->not->toBeEmpty();
-})->with([
-    ['active', 'accepted'],
-    ['inactive', 'rejected'],
-]);
-PHP
-        );
+        $fixture = writeFeatureParityFixture('outline-explicit-dataset');
 
         /** @When the checker validates the explicit outline dataset */
         $result = runFeatureParityFixture($fixture['dir'], checkOutlineDatasets: true);
@@ -661,31 +324,7 @@ PHP
 
     it('should reject explicit arrays that differ from scenario outline examples', function () {
         /** @Given a scenario outline whose literal Pest dataset contains different values */
-        $fixture = writeFeatureParityFixture(
-            'outline-mismatched-dataset',
-            <<<'FEATURE'
-Feature: State datasets
-  Scenario Outline: mismatched states are rejected
-    Given the state is "<state>"
-    Then the result is "<result>"
-
-    Examples:
-      | state  | result   |
-      | active | accepted |
-FEATURE,
-            <<<'PHP'
-<?php
-
-test('mismatched states are rejected', function (string $state, string $result) {
-    /** @Given the state is "<state>" */
-    expect($state)->not->toBeEmpty();
-    /** @Then the result is "<result>" */
-    expect($result)->not->toBeEmpty();
-})->with([
-    ['inactive', 'rejected'],
-]);
-PHP
-        );
+        $fixture = writeFeatureParityFixture('outline-mismatched-dataset');
 
         /** @When the checker validates the mismatched outline dataset */
         $result = runFeatureParityFixture($fixture['dir'], checkOutlineDatasets: true);
@@ -700,35 +339,7 @@ PHP
 
     it('should accept labeled Gherkish examples datasets', function () {
         /** @Given a scenario outline with labeled Examples blocks mapped by name */
-        $fixture = writeFeatureParityFixture(
-            'outline-labeled-dataset',
-            <<<'FEATURE'
-Feature: State datasets
-  Scenario Outline: labeled states are handled
-    Given the state is "<state>"
-    Then the result is "<result>"
-
-    Examples: Active states
-      | state  | result   |
-      | active | accepted |
-
-    Examples: Inactive states
-      | state    | result   |
-      | inactive | rejected |
-FEATURE,
-            <<<'PHP'
-<?php
-
-use Gherkish\Gherkish;
-
-test('labeled states are handled', function (string $state, string $result) {
-    /** @Given the state is "<state>" */
-    expect($state)->not->toBeEmpty();
-    /** @Then the result is "<result>" */
-    expect($result)->not->toBeEmpty();
-})->with(Gherkish::examples('Active states', 'Inactive states'));
-PHP
-        );
+        $fixture = writeFeatureParityFixture('outline-labeled-dataset');
 
         /** @When the checker validates the labeled outline dataset */
         $result = runFeatureParityFixture($fixture['dir'], checkOutlineDatasets: true);
@@ -740,30 +351,7 @@ PHP
 
     it('should allow custom outline datasets to opt out of examples validation', function () {
         /** @Given a scenario outline uses a custom dataset with the ignore examples comment */
-        $fixture = writeFeatureParityFixture(
-            'outline-ignored-custom-dataset',
-            <<<'FEATURE'
-Feature: State datasets
-  Scenario Outline: custom states are handled
-    Given the state is "<state>"
-    Then it is accepted
-
-    Examples:
-      | state  |
-      | active |
-FEATURE,
-            <<<'PHP'
-<?php
-
-// @gherkish-ignore-examples
-test('custom states are handled', function (string $state) {
-    /** @Given the state is "<state>" */
-    expect($state)->not->toBeEmpty();
-    /** @Then it is accepted */
-    expect(true)->toBeTrue();
-})->with(customStateDataset());
-PHP
-        );
+        $fixture = writeFeatureParityFixture('outline-ignored-custom-dataset');
 
         /** @When the checker validates the ignored custom dataset */
         $result = runFeatureParityFixture($fixture['dir'], checkOutlineDatasets: true);
@@ -799,28 +387,7 @@ PHP
 describe('Gherkish examples datasets', function () {
     it('should return rows from a single examples block without a label', function () {
         /** @Given a scenario outline with one examples block */
-        $fixture = writeFeatureParityFixture(
-            'single-examples-dataset',
-            <<<'FEATURE'
-Feature: Login
-  Scenario Outline: User logs in
-    Given a user with email "<email>"
-    When they log in with password "<password>"
-    Then the result should be "<result>"
-
-    Examples:
-      | email            | password | result  |
-      | john@test.com    | correct  | success |
-      | missing@test.com | anything | failure |
-FEATURE,
-            <<<'PHP'
-<?php
-
-use Gherkish\Gherkish;
-
-return Gherkish::examples();
-PHP,
-        );
+        $fixture = writeFeatureParityFixture('single-examples-dataset');
 
         /** @When the examples dataset is requested without a label */
         $rows = require $fixture['testPath'];
@@ -848,32 +415,7 @@ PHP,
 
     it('should combine multiple examples blocks by label', function () {
         /** @Given a scenario outline with multiple labeled examples blocks */
-        $fixture = writeFeatureParityFixture(
-            'combined-examples-dataset',
-            <<<'FEATURE'
-Feature: Login
-  Scenario Outline: User logs in
-    Given a user with email "<email>"
-    Then the result should be "<result>"
-
-    Examples: Valid credentials
-      | email         | result  |
-      | john@test.com | success |
-      | jane@test.com | success |
-
-    Examples: Invalid credentials
-      | email         | result  |
-      | john@test.com | failure |
-      | jane@test.com | failure |
-FEATURE,
-            <<<'PHP'
-<?php
-
-use Gherkish\Gherkish;
-
-return Gherkish::examples('Invalid credentials', 'Valid credentials');
-PHP,
-        );
+        $fixture = writeFeatureParityFixture('combined-examples-dataset');
 
         /** @When an examples dataset is requested with multiple labels */
         $rows = require $fixture['testPath'];
@@ -916,9 +458,20 @@ PHP,
     });
 });
 
-function writeFeatureParityFixture(string $case, string $featureContent, ?string $testContent = null): array
+function writeFeatureParityFixture(string $fixture, ?string $case = null): array
 {
     $filesystem = new Filesystem;
+    $case ??= $fixture;
+    $stubDir = __DIR__.'/Fixtures/FeatureParity/'.$fixture;
+    $featureStub = $stubDir.'/Fixture.feature.stub';
+    $testStub = $stubDir.'/FixtureTest.php.stub';
+
+    if (! $filesystem->exists($featureStub)) {
+        throw new InvalidArgumentException(sprintf('Feature parity fixture "%s" does not exist.', $fixture));
+    }
+
+    $featureContent = $filesystem->get($featureStub);
+    $testContent = $filesystem->exists($testStub) ? $filesystem->get($testStub) : null;
     $dir = base_path('tests/.feature-parity-fixtures/'.$case);
     $filesystem->deleteDirectory($dir);
     $filesystem->makeDirectory($dir, 0777, true, true);
@@ -926,9 +479,9 @@ function writeFeatureParityFixture(string $case, string $featureContent, ?string
     $featurePath = $dir.'/Fixture.feature';
     $testPath = $testContent !== null ? $dir.'/FixtureTest.php' : null;
 
-    file_put_contents($featurePath, rtrim($featureContent).PHP_EOL);
+    $filesystem->put($featurePath, rtrim($featureContent).PHP_EOL);
     if ($testPath !== null) {
-        file_put_contents($testPath, rtrim($testContent).PHP_EOL);
+        $filesystem->put($testPath, rtrim($testContent).PHP_EOL);
     }
 
     return [
@@ -976,39 +529,5 @@ function runFeatureParityFixture(string $dir, bool $checkOutlineDatasets = false
 
 function writeLoginExamplesFixture(string $case): array
 {
-    return writeFeatureParityFixture(
-        $case,
-        <<<'FEATURE'
-Feature: Login
-  Scenario Outline: User registers
-    Given a new user with email "<email>"
-    When they register
-    Then registration succeeds
-
-    Examples:
-      | email         |
-      | new@test.com  |
-
-  Scenario Outline: User logs in
-    Given a user with email "<email>"
-    When they log in with password "<password>"
-    Then the result should be "<result>"
-
-    Examples: Valid credentials
-      | email         | password | result  |
-      | john@test.com | correct  | success |
-      | jane@test.com | correct  | success |
-
-    Examples: Invalid credentials
-      | email         | password | result  |
-      | john@test.com | wrong    | failure |
-      | jane@test.com | wrong    | failure |
-FEATURE,
-        <<<'PHP'
-<?php
-
-it('User logs in', function (string $email, string $password, string $result) {
-})->with(Gherkish::examples('Valid credentials'));
-PHP,
-    );
+    return writeFeatureParityFixture('login-examples', $case);
 }

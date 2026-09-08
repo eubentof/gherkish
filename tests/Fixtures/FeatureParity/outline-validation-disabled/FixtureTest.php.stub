@@ -1,0 +1,9 @@
+<?php
+
+test('unchecked states are handled', function () {
+    /** @Given the state is "<state>" */
+    expect(true)->toBeTrue();
+    /** @Then it is accepted */
+    expect(true)->toBeTrue();
+});
+

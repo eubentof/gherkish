@@ -1,0 +1,7 @@
+<?php
+
+it('should report missing steps when docblocks are incomplete', function () {
+    /** @Given only the first step is documented */
+    expect(true)->toBeTrue();
+});
+

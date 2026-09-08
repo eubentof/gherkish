@@ -1,0 +1,6 @@
+Feature: Command integration
+  Scenario: should run through Artisan
+    Given a mapped command scenario
+    When the package command runs
+    Then it exits successfully
+

@@ -1,0 +1,7 @@
+<?php
+
+it('scenario-specific path', function () {
+    /** @When the scenario performs a unique action */
+    /** @Then only scenario steps should be recorded */
+});
+

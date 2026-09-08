@@ -1,0 +1,9 @@
+Feature: State datasets
+  Scenario Outline: state is handled
+    Given the state is "<state>"
+    Then it is accepted
+
+    Examples:
+      | state  |
+      | active |
+

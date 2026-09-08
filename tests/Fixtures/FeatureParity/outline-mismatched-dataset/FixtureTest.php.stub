@@ -1,0 +1,11 @@
+<?php
+
+test('mismatched states are rejected', function (string $state, string $result) {
+    /** @Given the state is "<state>" */
+    expect($state)->not->toBeEmpty();
+    /** @Then the result is "<result>" */
+    expect($result)->not->toBeEmpty();
+})->with([
+    ['inactive', 'rejected'],
+]);
+

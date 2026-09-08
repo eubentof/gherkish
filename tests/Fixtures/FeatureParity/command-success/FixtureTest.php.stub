@@ -1,0 +1,11 @@
+<?php
+
+it('should run through Artisan', function () {
+    /** @Given a mapped command scenario */
+    expect(true)->toBeTrue();
+    /** @When the package command runs */
+    expect(true)->toBeTrue();
+    /** @Then it exits successfully */
+    expect(true)->toBeTrue();
+});
+

@@ -1,0 +1,25 @@
+Feature: Login
+  Scenario Outline: User registers
+    Given a new user with email "<email>"
+    When they register
+    Then registration succeeds
+
+    Examples:
+      | email         |
+      | new@test.com  |
+
+  Scenario Outline: User logs in
+    Given a user with email "<email>"
+    When they log in with password "<password>"
+    Then the result should be "<result>"
+
+    Examples: Valid credentials
+      | email         | password | result  |
+      | john@test.com | correct  | success |
+      | jane@test.com | correct  | success |
+
+    Examples: Invalid credentials
+      | email         | password | result  |
+      | john@test.com | wrong    | failure |
+      | jane@test.com | wrong    | failure |
+

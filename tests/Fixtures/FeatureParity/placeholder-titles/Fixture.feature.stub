@@ -1,0 +1,6 @@
+Feature: Parser placeholder titles
+  Scenario: should match "<state>" placeholder titles
+    Given placeholders appear in the scenario title
+    When the parser compares the title with actual test names
+    Then placeholder tokens are treated as flexible text
+

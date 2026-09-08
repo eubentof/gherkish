@@ -1,0 +1,9 @@
+<?php
+
+it('should ignore helper names inside other functions', function () {
+    visit('/careers');
+    /** @Given the scenario uses the visit helper inside the Pest test */
+    /** @When the parser inspects the file for Pest declarations */
+    /** @Then it should not mis-detect an extra test */
+});
+

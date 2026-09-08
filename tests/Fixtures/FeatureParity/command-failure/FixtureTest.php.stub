@@ -1,0 +1,18 @@
+<?php
+
+test('should reject an empty step', function () {
+    /** @Given a mapped command scenario */
+
+    /** @When the package command runs */
+    expect(true)->toBeTrue();
+    /** @Then it exits successfully */
+    expect(true)->toBeTrue();
+});
+
+test('should accept implemented steps', function () {
+    /** @Given another mapped command scenario */
+    expect(true)->toBeTrue();
+    /** @Then its implementation is accepted */
+    expect(true)->toBeTrue();
+});
+

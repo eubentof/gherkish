@@ -1,0 +1,13 @@
+Feature: State datasets
+  Scenario Outline: labeled states are handled
+    Given the state is "<state>"
+    Then the result is "<result>"
+
+    Examples: Active states
+      | state  | result   |
+      | active | accepted |
+
+    Examples: Inactive states
+      | state    | result   |
+      | inactive | rejected |
+

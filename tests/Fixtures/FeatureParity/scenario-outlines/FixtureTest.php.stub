@@ -1,0 +1,8 @@
+<?php
+
+test('outline coverage', function () {
+    /** @Given outline step for <state> */
+    /** @When the parser inspects the outline */
+    /** @Then the outline remains singular */
+});
+

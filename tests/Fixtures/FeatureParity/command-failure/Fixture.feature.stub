@@ -1,0 +1,10 @@
+Feature: Command integration
+  Scenario: should reject an empty step
+    Given a mapped command scenario
+    When the package command runs
+    Then it exits successfully
+
+  Scenario: should accept implemented steps
+    Given another mapped command scenario
+    Then its implementation is accepted
+

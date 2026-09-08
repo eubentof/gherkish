@@ -1,0 +1,8 @@
+Feature: Parser background handling
+  Background:
+    Given a shared setup step for the feature
+
+  Scenario: scenario-specific path
+    When the scenario performs a unique action
+    Then only scenario steps should be recorded
+

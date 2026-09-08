@@ -1,0 +1,9 @@
+Feature: State datasets
+  Scenario Outline: mismatched states are rejected
+    Given the state is "<state>"
+    Then the result is "<result>"
+
+    Examples:
+      | state  | result   |
+      | active | accepted |
+

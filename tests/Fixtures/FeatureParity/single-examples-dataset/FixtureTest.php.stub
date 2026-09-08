@@ -1,0 +1,6 @@
+<?php
+
+use Gherkish\Gherkish;
+
+return Gherkish::examples();
+

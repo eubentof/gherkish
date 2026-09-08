@@ -1,0 +1,14 @@
+<?php
+
+test('invalid step implementations', function () {
+    /** @Given a step followed by another step docblock */
+    /** @When a step is followed by executable code */
+    expect(true)->toBeTrue();
+    /** @And a step followed by a regular comment */
+    // This comment cannot implement the step.
+    expect(true)->toBeTrue();
+    /** @Then a step followed by a blank line */
+
+    expect(true)->toBeTrue();
+});
+

@@ -1,0 +1,7 @@
+Feature: Parser missing steps
+  Scenario: should report missing steps when docblocks are incomplete
+    Given only the first step is documented
+    And the second step lacks documentation
+    When the parser inspects the file for missing annotations
+    Then the missing steps should be flagged
+

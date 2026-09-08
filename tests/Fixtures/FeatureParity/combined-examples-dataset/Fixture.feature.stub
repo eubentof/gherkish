@@ -1,0 +1,15 @@
+Feature: Login
+  Scenario Outline: User logs in
+    Given a user with email "<email>"
+    Then the result should be "<result>"
+
+    Examples: Valid credentials
+      | email         | result  |
+      | john@test.com | success |
+      | jane@test.com | success |
+
+    Examples: Invalid credentials
+      | email         | result  |
+      | john@test.com | failure |
+      | jane@test.com | failure |
+

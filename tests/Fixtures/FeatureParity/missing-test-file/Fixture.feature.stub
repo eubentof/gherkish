@@ -1,0 +1,6 @@
+Feature: Parser missing test file
+  Scenario: orphan scenario
+    Given there is no matching Pest test implementation
+    When the checker evaluates coverage
+    Then it should report missing steps
+
