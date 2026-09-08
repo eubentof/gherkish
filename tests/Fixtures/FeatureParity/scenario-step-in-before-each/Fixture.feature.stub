@@ -1,0 +1,5 @@
+Feature: Scenario step in beforeEach
+  Scenario: uses shared setup annotation
+    Given shared state exists
+    When the scenario runs
+    Then it succeeds

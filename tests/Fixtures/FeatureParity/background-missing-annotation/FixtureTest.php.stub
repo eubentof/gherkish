@@ -1,0 +1,13 @@
+<?php
+
+beforeEach(function () {
+    $this->state = true;
+});
+
+test('uses shared state', function () {
+    /** @When the scenario runs */
+    $result = $this->state;
+
+    /** @Then it succeeds */
+    expect($result)->toBeTrue();
+});

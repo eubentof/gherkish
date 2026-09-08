@@ -8,6 +8,7 @@ final class FeatureDoc
 {
     /**
      * @param  ScenarioDoc[]  $scenarios
+     * @param  StepDoc[]  $backgroundSteps
      */
     public function __construct(
         public string $path,
@@ -17,5 +18,7 @@ final class FeatureDoc
         public ?string $title,
         public array $tests,
         public bool $hasTestsSection,
+        public array $backgroundSteps = [],
+        public ?int $backgroundLine = null,
     ) {}
 }

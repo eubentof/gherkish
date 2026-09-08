@@ -26,11 +26,36 @@ Feature: FeatureParityChecker parsing
     When the checker snapshots that feature directory
     Then the scenario should be considered covered
 
-  Scenario: should ignore background steps when computing coverage
-    Given a feature file with background steps and scenario steps
-    And matching Pest tests documenting only scenario steps
-    When the checker snapshots that feature directory
-    Then background steps should not appear in the coverage map
+  Scenario: should map Background steps to beforeEach
+    Given a feature file with Background steps
+    And a matching Pest beforeEach with implemented step annotations
+    When the checker runs and snapshots that feature directory
+    Then the Background and scenario should be fully covered without duplicating Background cases
+
+  Scenario: should require beforeEach for a feature Background
+    Given a feature file with a Background and a matching scenario test without beforeEach
+    When the checker runs
+    Then the error should identify the Background and Pest test locations
+
+  Scenario: should keep Background parity independent from strict structure
+    Given a mapped Background supplies the setup phase
+    When the checker validates the feature in strict mode
+    Then the Background Given should not satisfy the Scenario structure
+
+  Scenario: should reject missing mismatched and unimplemented Background annotations
+    Given Background steps with missing mismatched and unimplemented beforeEach annotations
+    When the checker runs for each invalid mapping
+    Then each error should identify the exact Feature and Pest locations
+
+  Scenario: should let beforeEach annotations satisfy scenario steps without a Background
+    Given a feature scenario whose Given annotation is implemented in beforeEach
+    When the checker runs without a feature Background
+    Then the scenario should remain fully covered
+
+  Scenario: should isolate beforeEach annotations by describe scope
+    Given sibling describe scopes with different beforeEach annotations
+    When the checker maps their scenario tests
+    Then setup annotations should apply only to tests in their own or descendant scope
 
   Scenario: should match And/But steps with multiline docblocks
     Given a feature file containing And and But steps

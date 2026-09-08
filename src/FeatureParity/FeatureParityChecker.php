@@ -54,7 +54,11 @@ final class FeatureParityChecker
             }
 
             foreach ($feature->scenarios as $scenario) {
-                if (empty($scenario->steps) && ! self::shouldCheckStrictScenarioStructure()) {
+                if (
+                    empty($scenario->steps)
+                    && $feature->backgroundLine === null
+                    && ! self::shouldCheckStrictScenarioStructure()
+                ) {
                     continue;
                 }
 
@@ -105,6 +109,15 @@ final class FeatureParityChecker
                     );
                 }
             }
+
+            if ($feature->backgroundLine !== null) {
+                $testPaths = $featureTestPaths ?? [self::pairTestPath($feature->path)];
+                $result->addBackground(
+                    ($feature->title ?: $feature->basename).' -> Background',
+                    self::relativeTestPath($testPaths[0] ?? self::pairTestPath($feature->path)),
+                    self::backgroundStepCases($feature, $testPaths),
+                );
+            }
         }
 
         if (self::shouldCheckUnmappedTests()) {
@@ -136,8 +149,8 @@ final class FeatureParityChecker
             $existingTestPaths = array_values(array_filter($testPaths ?? [], 'is_file'));
             foreach ($existingTestPaths as $path) {
                 foreach (self::findMatchingTests($scenario, self::parsePestFile($path)->tests) as $test) {
-                    $unimplementedLines = array_column($test->unimplementedStepComments, 'line');
-                    foreach ($test->stepComments as $step) {
+                    $unimplementedLines = array_column(self::effectiveUnimplementedStepComments($test), 'line');
+                    foreach (self::effectiveStepComments($test) as $step) {
                         if (! in_array($step->line, $unimplementedLines, true)) {
                             $implementedSignatures[self::normalizeStepSignature($step->keyword, $step->text)] = true;
                         }
@@ -187,7 +200,7 @@ final class FeatureParityChecker
             $scenariosPayload = [];
             foreach ($feature->scenarios as $scenario) {
                 $matching = self::findMatchingTests($scenario, $tests);
-                $exact = self::findExactStepMatch($scenario, $matching);
+                $exact = self::findExactStepMatch($feature, $scenario, $matching);
                 $exactTest = $exact['test'] ?? null;
                 $mapping = $exact['mapping'] ?? [];
                 $stepsPayload = [];
@@ -230,9 +243,21 @@ final class FeatureParityChecker
                 );
             }
 
+            $setupsPayload = [];
+            foreach ($existingTestPaths as $path) {
+                foreach (self::parsePestFile($path)->setups as $setup) {
+                    $setupsPayload[sprintf('%s:%d', self::relativeTestPath($path), $setup->line)] = array_map(
+                        static fn (StepDoc $step): string => sprintf('%s %s', $step->keyword, $step->text),
+                        $setup->stepComments,
+                    );
+                }
+            }
+
             $snapshot[$relativeFeature] = [
                 'feature' => $feature->title ?: $feature->basename,
+                'background' => self::backgroundSnapshotPayload($feature, $tests),
                 'scenarios' => $scenariosPayload,
+                'beforeEach' => $setupsPayload,
                 'tests' => $testsPayload,
             ];
         }
@@ -263,6 +288,90 @@ final class FeatureParityChecker
         }
 
         self::snapshot($path);
+    }
+
+    private static function backgroundSnapshotPayload(FeatureDoc $feature, array $tests): ?array
+    {
+        if ($feature->backgroundLine === null) {
+            return null;
+        }
+
+        $stepsPayload = [];
+        $coveredSteps = [];
+        $missingSteps = [];
+
+        foreach ($feature->backgroundSteps as $backgroundStep) {
+            $signature = self::normalizeStepSignature($backgroundStep->keyword, $backgroundStep->text);
+            $covered = true;
+
+            foreach ($feature->scenarios as $scenario) {
+                $matchingTests = self::findMatchingTests($scenario, $tests);
+                $scenarioCovered = false;
+
+                foreach ($matchingTests as $test) {
+                    $unimplementedLines = array_column(self::effectiveUnimplementedStepComments($test), 'line');
+                    foreach ($test->setupBlocks as $setup) {
+                        foreach ($setup->stepComments as $step) {
+                            if (
+                                self::normalizeStepSignature($step->keyword, $step->text) === $signature
+                                && ! in_array($step->line, $unimplementedLines, true)
+                            ) {
+                                $scenarioCovered = true;
+                                break 3;
+                            }
+                        }
+                    }
+                }
+
+                if (! $scenarioCovered) {
+                    $covered = false;
+                    break;
+                }
+            }
+
+            $label = sprintf('%s %s', $backgroundStep->keyword, $backgroundStep->text);
+            $stepsPayload[$label] = $covered;
+            if ($covered) {
+                $coveredSteps[] = $label;
+            } else {
+                $missingSteps[] = $label;
+            }
+        }
+
+        return [
+            'line' => $feature->backgroundLine,
+            'steps' => $stepsPayload,
+            'coverage' => [
+                'covered' => $coveredSteps,
+                'missing' => $missingSteps,
+                'coveredCount' => count($coveredSteps),
+                'missingCount' => count($missingSteps),
+                'total' => count($stepsPayload),
+            ],
+        ];
+    }
+
+    /**
+     * @return array<int, array{status:string,label:string}>
+     */
+    private static function backgroundStepCases(FeatureDoc $feature, array $testPaths): array
+    {
+        $tests = [];
+        foreach (array_filter($testPaths, 'is_file') as $testPath) {
+            array_push($tests, ...self::parsePestFile($testPath)->tests);
+        }
+
+        $payload = self::backgroundSnapshotPayload($feature, $tests);
+
+        return array_map(
+            static fn (StepDoc $step): array => [
+                'status' => ($payload['steps'][sprintf('%s %s', $step->keyword, $step->text)] ?? false)
+                    ? 'passed'
+                    : 'failed',
+                'label' => sprintf('%s %s', $step->keyword, $step->text),
+            ],
+            $feature->backgroundSteps,
+        );
     }
 
     private static function selection(bool $reset = false): FeatureParitySelection
@@ -447,6 +556,8 @@ final class FeatureParityChecker
         $tests = [];
         $hasTestsSection = false;
         $inBackground = false;
+        $backgroundSteps = [];
+        $backgroundLine = null;
 
         $flushScenario = function () use (&$currentScenario, &$scenarios): void {
             if ($currentScenario === null) {
@@ -503,6 +614,7 @@ final class FeatureParityChecker
 
             if (preg_match('/^Background:/i', $trimmed)) {
                 $inBackground = true;
+                $backgroundLine = $lineNumber;
 
                 continue;
             }
@@ -551,7 +663,15 @@ final class FeatureParityChecker
                 continue;
             }
 
-            if ($inBackground || $currentScenario === null) {
+            if ($inBackground) {
+                $keyword = ucfirst(strtolower($match[1]));
+                $text = trim($match[2]);
+                $backgroundSteps[] = new StepDoc($keyword, $text, $lineNumber);
+
+                continue;
+            }
+
+            if ($currentScenario === null) {
                 continue;
             }
 
@@ -570,13 +690,15 @@ final class FeatureParityChecker
             $featureTitle,
             $tests,
             $hasTestsSection,
+            $backgroundSteps,
+            $backgroundLine,
         );
     }
 
     private static function assertScenarioParity(FeatureDoc $feature, ScenarioDoc $scenario, ?array $testPaths = null): TestBlock
     {
         $relativeFeature = self::relativeTestPath($feature->path);
-        if (empty($scenario->steps)) {
+        if (empty($scenario->steps) && $feature->backgroundLine === null) {
             throw new FeatureParitySkippedException(sprintf('Scenario "%s" in %s has no steps to verify.', $scenario->title, $relativeFeature));
         }
 
@@ -626,20 +748,16 @@ final class FeatureParityChecker
             ));
         }
 
-        $scenarioStepsBySignature = [];
-        foreach ($scenario->steps as $step) {
-            $scenarioStepsBySignature[self::normalizeStepSignature($step->keyword, $step->text)] = $step;
-        }
-
         $unimplementedStepComments = [];
         foreach ($matchingTests as $test) {
-            foreach ($test->unimplementedStepComments as $step) {
-                $signature = self::normalizeStepSignature($step->keyword, $step->text);
-                if (! isset($scenarioStepsBySignature[$signature])) {
+            foreach (self::effectiveUnimplementedStepComments($test) as $step) {
+                $featureStep = self::featureStepForUnimplementedComment($feature, $scenario, $test, $step);
+                if ($featureStep === null) {
                     continue;
                 }
 
-                $unimplementedStepComments[] = [$test, $step, $scenarioStepsBySignature[$signature]];
+                $key = implode(':', [$test->filePath, $step->line, $featureStep->line]);
+                $unimplementedStepComments[$key] = [$test, $step, $featureStep];
             }
         }
 
@@ -654,7 +772,7 @@ final class FeatureParityChecker
                     self::relativeTestPath($violation[0]->filePath),
                     $violation[1]->line,
                 ),
-                $unimplementedStepComments,
+                array_values($unimplementedStepComments),
             );
 
             throw new FeatureParityException(sprintf(
@@ -664,7 +782,16 @@ final class FeatureParityChecker
             ));
         }
 
-        $matched = self::findExactStepMatch($scenario, $matchingTests);
+        if ($feature->backgroundLine !== null && ! self::hasApplicableBeforeEach($matchingTests)) {
+            throw new FeatureParityException(sprintf(
+                "Feature Background requires an applicable Pest beforeEach().\n\nBackground  %s:%d\nPest test   %s",
+                $relativeFeature,
+                $feature->backgroundLine,
+                self::primaryTestReference($matchingTests) ?? $testReference,
+            ));
+        }
+
+        $matched = self::findExactStepMatch($feature, $scenario, $matchingTests);
 
         if ($matched === null) {
             $primaryTest = self::primaryTestReference($matchingTests) ?? $testReference;
@@ -679,6 +806,34 @@ final class FeatureParityChecker
         self::assertScenarioOutlineDataset($feature, $scenario, $matched['test']);
 
         return $matched['test'];
+    }
+
+    private static function featureStepForUnimplementedComment(
+        FeatureDoc $feature,
+        ScenarioDoc $scenario,
+        TestBlock $test,
+        StepDoc $comment,
+    ): ?StepDoc {
+        $isSetupComment = false;
+        foreach ($test->setupBlocks as $setup) {
+            if (in_array($comment, $setup->unimplementedStepComments, true)) {
+                $isSetupComment = true;
+                break;
+            }
+        }
+
+        $featureSteps = $isSetupComment
+            ? array_merge($feature->backgroundSteps, $scenario->steps)
+            : $scenario->steps;
+        $signature = self::normalizeStepSignature($comment->keyword, $comment->text);
+
+        foreach ($featureSteps as $featureStep) {
+            if (self::normalizeStepSignature($featureStep->keyword, $featureStep->text) === $signature) {
+                return $featureStep;
+            }
+        }
+
+        return null;
     }
 
     private static function assertScenarioOutlineDataset(
@@ -1027,16 +1182,22 @@ final class FeatureParityChecker
     private static function parsePestFile(string $path): PestFile
     {
         $content = file_get_contents($path) ?: '';
-        $tests = self::extractTestBlocks($content, $path);
+        $describeScopes = self::extractDescribeScopes($content);
+        $setups = self::extractSetupBlocks($content, $path, $describeScopes);
+        $tests = self::extractTestBlocks($content, $path, $describeScopes, $setups);
 
-        return new PestFile($path, $tests);
+        return new PestFile($path, $tests, $setups);
     }
 
     /**
      * @return TestBlock[]
      */
-    private static function extractTestBlocks(string $content, string $path): array
-    {
+    private static function extractTestBlocks(
+        string $content,
+        string $path,
+        array $describeScopes = [],
+        array $setups = [],
+    ): array {
         // Ensure we only match standalone Pest helpers and not substrings, e.g. the "it" in "visit(".
         $pattern = '~(?<![A-Za-z0-9_])(?P<fn>test|it)\s*\(\s*(["\'])(?P<name>.+?)\2\s*,~is';
 
@@ -1049,6 +1210,7 @@ final class FeatureParityChecker
             $start = $match[0][1];
             $body = self::extractStatement($content, $start);
             $startLine = self::offsetToLineNumber($content, $start);
+            $scope = self::scopeAtOffset($start, $describeScopes);
             $unimplementedStepComments = [];
             $stepComments = self::extractStepCommentsFromText($body, $startLine, $unimplementedStepComments);
             $tests[] = new TestBlock(
@@ -1060,10 +1222,95 @@ final class FeatureParityChecker
                 $unimplementedStepComments,
                 self::hasIgnoreExamplesComment($content, $start),
                 self::hasIgnoreMappingComment($content, $start),
+                array_values(array_filter(
+                    $setups,
+                    static fn (SetupBlock $setup): bool => self::scopeAppliesTo($setup->scope, $scope),
+                )),
+                $scope,
             );
         }
 
         return $tests;
+    }
+
+    /**
+     * @return SetupBlock[]
+     */
+    private static function extractSetupBlocks(string $content, string $path, array $describeScopes): array
+    {
+        preg_match_all(
+            '~(?<![A-Za-z0-9_])beforeEach\s*\(~i',
+            $content,
+            $matches,
+            PREG_SET_ORDER | PREG_OFFSET_CAPTURE,
+        );
+
+        $setups = [];
+        foreach ($matches as $match) {
+            $start = $match[0][1];
+            $body = self::extractStatement($content, $start);
+            $startLine = self::offsetToLineNumber($content, $start);
+            $unimplementedStepComments = [];
+            $stepComments = self::extractStepCommentsFromText($body, $startLine, $unimplementedStepComments);
+            $setups[] = new SetupBlock(
+                $body,
+                $stepComments,
+                $path,
+                $startLine,
+                $unimplementedStepComments,
+                self::scopeAtOffset($start, $describeScopes),
+            );
+        }
+
+        return $setups;
+    }
+
+    /**
+     * @return list<array{id:int,start:int,end:int}>
+     */
+    private static function extractDescribeScopes(string $content): array
+    {
+        preg_match_all(
+            '~(?<![A-Za-z0-9_])describe\s*\(~i',
+            $content,
+            $matches,
+            PREG_SET_ORDER | PREG_OFFSET_CAPTURE,
+        );
+
+        $scopes = [];
+        foreach ($matches as $match) {
+            $start = $match[0][1];
+            $statement = self::extractStatement($content, $start);
+            $scopes[] = [
+                'id' => $start,
+                'start' => $start,
+                'end' => $start + strlen($statement),
+            ];
+        }
+
+        usort($scopes, static fn (array $left, array $right): int => $left['start'] <=> $right['start']);
+
+        return $scopes;
+    }
+
+    /**
+     * @return int[]
+     */
+    private static function scopeAtOffset(int $offset, array $describeScopes): array
+    {
+        $scope = [];
+        foreach ($describeScopes as $describeScope) {
+            if ($offset > $describeScope['start'] && $offset < $describeScope['end']) {
+                $scope[] = $describeScope['id'];
+            }
+        }
+
+        return $scope;
+    }
+
+    private static function scopeAppliesTo(array $setupScope, array $testScope): bool
+    {
+        return array_slice($testScope, 0, count($setupScope)) === $setupScope;
     }
 
     private static function hasIgnoreExamplesComment(string $content, int $testOffset): bool
@@ -1390,9 +1637,13 @@ final class FeatureParityChecker
      * @param  TestBlock[]  $tests
      * @return array{test: TestBlock, mapping: array<int,int>}|null
      */
-    private static function findExactStepMatch(ScenarioDoc $scenario, array $tests): ?array
+    private static function findExactStepMatch(FeatureDoc $feature, ScenarioDoc $scenario, array $tests): ?array
     {
         foreach ($tests as $test) {
+            if (! self::backgroundStepsInSetups($feature, $test)) {
+                continue;
+            }
+
             $mapping = [];
             if (self::scenarioStepsInTest($scenario, $test, $mapping)) {
                 return ['test' => $test, 'mapping' => $mapping];
@@ -1437,8 +1688,77 @@ final class FeatureParityChecker
     {
         return array_map(
             static fn (StepDoc $step): string => self::normalizeStepSignature($step->keyword, $step->text),
-            $test->stepComments
+            self::effectiveStepComments($test),
         );
+    }
+
+    private static function backgroundStepsInSetups(FeatureDoc $feature, TestBlock $test): bool
+    {
+        if ($feature->backgroundLine === null) {
+            return true;
+        }
+
+        if ($test->setupBlocks === []) {
+            return false;
+        }
+
+        $available = [];
+        foreach ($test->setupBlocks as $setup) {
+            foreach ($setup->stepComments as $step) {
+                $signature = self::normalizeStepSignature($step->keyword, $step->text);
+                $available[$signature] = ($available[$signature] ?? 0) + 1;
+            }
+        }
+
+        foreach ($feature->backgroundSteps as $step) {
+            $signature = self::normalizeStepSignature($step->keyword, $step->text);
+            if (($available[$signature] ?? 0) < 1) {
+                return false;
+            }
+
+            $available[$signature]--;
+        }
+
+        return true;
+    }
+
+    /**
+     * @return StepDoc[]
+     */
+    private static function effectiveStepComments(TestBlock $test): array
+    {
+        $steps = [];
+        foreach ($test->setupBlocks as $setup) {
+            array_push($steps, ...$setup->stepComments);
+        }
+        array_push($steps, ...$test->stepComments);
+
+        return $steps;
+    }
+
+    /**
+     * @return StepDoc[]
+     */
+    private static function effectiveUnimplementedStepComments(TestBlock $test): array
+    {
+        $steps = [];
+        foreach ($test->setupBlocks as $setup) {
+            array_push($steps, ...$setup->unimplementedStepComments);
+        }
+        array_push($steps, ...$test->unimplementedStepComments);
+
+        return $steps;
+    }
+
+    private static function hasApplicableBeforeEach(array $tests): bool
+    {
+        foreach ($tests as $test) {
+            if ($test->setupBlocks !== []) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static function formatScenarioStepList(FeatureDoc $feature, ScenarioDoc $scenario): string
@@ -1657,7 +1977,7 @@ final class FeatureParityChecker
     private static function hasStepComment(array $tests, string $normalizedSignature): bool
     {
         foreach ($tests as $test) {
-            foreach ($test->stepComments as $comment) {
+            foreach (self::effectiveStepComments($test) as $comment) {
                 if (self::normalizeStepSignature($comment->keyword, $comment->text) === $normalizedSignature) {
                     return true;
                 }
@@ -1669,7 +1989,7 @@ final class FeatureParityChecker
 
     private static function formatSequenceCoverage(FeatureDoc $feature, ScenarioDoc $scenario, array $tests): string
     {
-        if (empty($scenario->steps)) {
+        if (empty($scenario->steps) && empty($feature->backgroundSteps)) {
             return 'Case mapping (0 documented, 0 missing)';
         }
 
@@ -1680,10 +2000,11 @@ final class FeatureParityChecker
         $featurePath = self::relativeTestPath($feature->path);
         $mappedSteps = [];
 
-        foreach ($scenario->steps as $step) {
+        foreach (array_merge($feature->backgroundSteps, $scenario->steps) as $step) {
             $signature = self::normalizeStepSignature($step->keyword, $step->text);
-            $matchInfo = self::findStepCommentLocation($tests, $signature);
-            $mappedSteps[] = [$step, $matchInfo];
+            $background = in_array($step, $feature->backgroundSteps, true);
+            $matchInfo = self::findStepCommentLocation($tests, $signature, $background);
+            $mappedSteps[] = [$step, $matchInfo, $background];
         }
 
         $documented = count(array_filter(
@@ -1693,9 +2014,9 @@ final class FeatureParityChecker
         $missing = count($mappedSteps) - $documented;
         $lines = [sprintf('Case mapping (%d documented, %d missing)', $documented, $missing), ''];
 
-        foreach ($mappedSteps as [$step, $matchInfo]) {
+        foreach ($mappedSteps as [$step, $matchInfo, $background]) {
             $icon = $matchInfo !== null ? "{$green}✓{$reset}" : "{$red}✕{$reset}";
-            $lines[] = sprintf('  %s %s %s', $icon, $step->keyword, $step->text);
+            $lines[] = sprintf('  %s %s%s %s', $icon, $background ? '[Background] ' : '', $step->keyword, $step->text);
             $lines[] = sprintf('    Feature  %s:%d', $featurePath, $step->line);
 
             if ($matchInfo !== null) {
@@ -1707,7 +2028,16 @@ final class FeatureParityChecker
                     $comment->line,
                 );
             } else {
-                $lines[] = '    Pest     not documented';
+                $setupReference = $background ? self::primarySetupReference($tests) : null;
+                $lines[] = $setupReference === null
+                    ? '    Pest     not documented'
+                    : sprintf('    Pest     not documented in applicable beforeEach at %s', $setupReference);
+
+                if ($background) {
+                    foreach (self::applicableSetupCaseReferences($tests) as $setupCase) {
+                        $lines[] = sprintf('    Available %s', $setupCase);
+                    }
+                }
             }
 
             $lines[] = '';
@@ -1716,10 +2046,13 @@ final class FeatureParityChecker
         return rtrim(implode("\n", $lines));
     }
 
-    private static function findStepCommentLocation(array $tests, string $signature): ?array
+    private static function findStepCommentLocation(array $tests, string $signature, bool $setupOnly = false): ?array
     {
         foreach ($tests as $test) {
-            foreach ($test->stepComments as $step) {
+            $steps = $setupOnly
+                ? array_merge(...array_map(static fn (SetupBlock $setup): array => $setup->stepComments, $test->setupBlocks))
+                : self::effectiveStepComments($test);
+            foreach ($steps as $step) {
                 if (self::normalizeStepSignature($step->keyword, $step->text) === $signature) {
                     return ['test' => $test, 'step' => $step];
                 }
@@ -1727,6 +2060,44 @@ final class FeatureParityChecker
         }
 
         return null;
+    }
+
+    private static function primarySetupReference(array $tests): ?string
+    {
+        foreach ($tests as $test) {
+            if ($test->setupBlocks === []) {
+                continue;
+            }
+
+            $setup = $test->setupBlocks[0];
+
+            return sprintf('%s:%d', self::relativeTestPath($setup->filePath), $setup->line);
+        }
+
+        return null;
+    }
+
+    /**
+     * @return string[]
+     */
+    private static function applicableSetupCaseReferences(array $tests): array
+    {
+        $references = [];
+        foreach ($tests as $test) {
+            foreach ($test->setupBlocks as $setup) {
+                foreach ($setup->stepComments as $step) {
+                    $references[] = sprintf(
+                        '%s %s at %s:%d',
+                        $step->keyword,
+                        $step->text,
+                        self::relativeTestPath($setup->filePath),
+                        $step->line,
+                    );
+                }
+            }
+        }
+
+        return array_values(array_unique($references));
     }
 
     private static function resolveFeatureTestPaths(FeatureDoc $feature): ?array

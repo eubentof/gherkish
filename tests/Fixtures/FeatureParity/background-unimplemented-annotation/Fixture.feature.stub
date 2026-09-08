@@ -1,0 +1,7 @@
+Feature: Background unimplemented annotation
+  Background:
+    Given shared state exists
+
+  Scenario: uses shared state
+    When the scenario runs
+    Then it succeeds

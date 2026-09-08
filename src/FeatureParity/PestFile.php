@@ -8,9 +8,11 @@ final class PestFile
 {
     /**
      * @param  TestBlock[]  $tests
+     * @param  SetupBlock[]  $setups
      */
     public function __construct(
         public string $path,
         public array $tests,
+        public array $setups = [],
     ) {}
 }

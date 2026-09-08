@@ -4,7 +4,12 @@
 
 - End every completed change handoff with a concise release note.
 - Describe the user-visible behavior and any compatibility impact.
-- Keep the release note small and ready to paste into a GitHub release.
+- For a publish handoff, provide a descriptive GitHub-flavored Markdown release note that is ready to paste into a GitHub release.
+- Structure published release notes with a title and overview, followed by focused sections for each important change.
+- Include relevant command examples, configuration or environment variables, output examples, upgrade instructions, compatibility notes, and verification results.
+- Prefer Markdown headings, lists, tables, inline code, and fenced code blocks. Use HTML only when Markdown cannot express the required layout clearly.
+- Explain new behavior, defaults, opt-in flags, ignore directives, and migration considerations; do not reduce a published release note to a terse bullet summary.
+- Build the release note from every user-visible change since the previous version tag.
 - Explicitly state when a change is opt-in, backward compatible, or breaking.
 - Do not create a release, tag, commit, or push unless the user explicitly requests it.
 

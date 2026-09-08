@@ -1,0 +1,12 @@
+<?php
+
+test('uses shared state', function () {
+    /** @Given shared state exists */
+    $state = true;
+
+    /** @When the scenario runs */
+    $result = $state;
+
+    /** @Then it succeeds */
+    expect($result)->toBeTrue();
+});

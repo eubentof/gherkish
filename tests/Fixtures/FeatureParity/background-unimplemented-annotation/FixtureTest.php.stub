@@ -1,0 +1,14 @@
+<?php
+
+beforeEach(function () {
+    /** @Given shared state exists */
+
+});
+
+test('uses shared state', function () {
+    /** @When the scenario runs */
+    $result = true;
+
+    /** @Then it succeeds */
+    expect($result)->toBeTrue();
+});

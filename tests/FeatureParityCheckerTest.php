@@ -101,21 +101,121 @@ describe('FeatureParityChecker parser', function () {
         expect($featureSnapshot['scenarios']['should match "<state>" placeholder titles']['coverage']['missing'])->toBe([]);
     });
 
-    it('should ignore background steps when computing coverage', function () {
-        /** @Given a feature file with background steps and scenario steps */
+    it('should map Background steps to beforeEach', function () {
+        /** @Given a feature file with Background steps */
         $fixture = writeFeatureParityFixture('background-steps');
 
-        /** @And matching Pest tests documenting only scenario steps */
+        /** @And a matching Pest beforeEach with implemented step annotations */
         expect($fixture['testPath'])->not->toBeNull();
 
-        /** @When the checker snapshots that feature directory */
+        /** @When the checker runs and snapshots that feature directory */
+        $result = runFeatureParityFixture($fixture['dir']);
         $snapshot = snapshotFeatureParityFixture($fixture['dir']);
+        $output = new BufferedOutput;
+        Artisan::call('gherkish:check', [
+            '--dir' => $fixture['dir'],
+            '--descriptive' => true,
+            '--no-ansi' => true,
+        ], $output);
         $featureSnapshot = reset($snapshot);
         $scenario = $featureSnapshot['scenarios']['scenario-specific path'];
 
-        /** @Then background steps should not appear in the coverage map */
+        /** @Then the Background and scenario should be fully covered without duplicating Background cases */
+        expect($result->errors)->toBe([]);
+        expect($result->cases[0]['steps'])->toHaveCount(2);
+        expect($featureSnapshot['background']['coverage']['missing'])->toBe([]);
+        expect($featureSnapshot['beforeEach'])->toHaveCount(1);
         expect(array_keys($scenario['steps']))->not->toContain('Given a shared setup step for the feature');
         expect($scenario['coverage']['missing'])->toBe([]);
+        expect($output->fetch())
+            ->toContain('BACKGROUND  Tests\\.feature-parity-fixtures\\background-steps\\FixtureTest → Parser background handling → Background')
+            ->toContain('✓ Given a shared setup step for the feature')
+            ->toContain('Scenarios:  1 covered (3 cases)');
+    });
+
+    it('should require beforeEach for a feature Background', function () {
+        /** @Given a feature file with a Background and a matching scenario test without beforeEach */
+        $fixture = writeFeatureParityFixture('background-missing-before-each');
+
+        /** @When the checker runs */
+        $result = runFeatureParityFixture($fixture['dir']);
+
+        /** @Then the error should identify the Background and Pest test locations */
+        expect($result->errors)->toHaveCount(1);
+        expect($result->errors[0]['message'])
+            ->toContain('Feature Background requires an applicable Pest beforeEach()')
+            ->toContain('Background  tests/.feature-parity-fixtures/background-missing-before-each/Fixture.feature:2')
+            ->toContain('Pest test   tests/.feature-parity-fixtures/background-missing-before-each/FixtureTest.php:3');
+    });
+
+    it('should keep Background parity independent from strict structure', function () {
+        /** @Given a mapped Background supplies the setup phase */
+        $fixture = writeFeatureParityFixture('background-steps');
+
+        /** @When the checker validates the feature in strict mode */
+        $result = runFeatureParityFixture($fixture['dir'], strict: true);
+
+        /** @Then the Background Given should not satisfy the Scenario structure */
+        expect($result->errors)->toHaveCount(1);
+        expect($result->errors[0]['message'])->toContain('missing the following required phase: Given');
+    });
+
+    it('should reject missing mismatched and unimplemented Background annotations', function () {
+        /** @Given Background steps with missing mismatched and unimplemented beforeEach annotations */
+        $fixtures = [
+            'missing' => writeFeatureParityFixture('background-missing-annotation'),
+            'mismatched' => writeFeatureParityFixture('background-mismatched-annotation'),
+            'unimplemented' => writeFeatureParityFixture('background-unimplemented-annotation'),
+        ];
+
+        /** @When the checker runs for each invalid mapping */
+        $results = array_map(
+            static fn (array $fixture): FeatureParityResult => runFeatureParityFixture($fixture['dir']),
+            $fixtures,
+        );
+
+        /** @Then each error should identify the exact Feature and Pest locations */
+        expect($results['missing']->errors[0]['message'])
+            ->toContain('[Background] Given shared state exists')
+            ->toContain('Feature  tests/.feature-parity-fixtures/background-missing-annotation/Fixture.feature:3')
+            ->toContain('Pest     not documented in applicable beforeEach at tests/.feature-parity-fixtures/background-missing-annotation/FixtureTest.php:3');
+        expect($results['mismatched']->errors[0]['message'])
+            ->toContain('[Background] Given shared state exists')
+            ->toContain('Feature  tests/.feature-parity-fixtures/background-mismatched-annotation/Fixture.feature:3')
+            ->toContain('Pest     not documented in applicable beforeEach at tests/.feature-parity-fixtures/background-mismatched-annotation/FixtureTest.php:3')
+            ->toContain('Available Given different shared state exists at tests/.feature-parity-fixtures/background-mismatched-annotation/FixtureTest.php:4');
+        expect($results['unimplemented']->errors[0]['message'])
+            ->toContain('Given shared state exists')
+            ->toContain('Feature step: tests/.feature-parity-fixtures/background-unimplemented-annotation/Fixture.feature:3')
+            ->toContain('Pest docblock: tests/.feature-parity-fixtures/background-unimplemented-annotation/FixtureTest.php:4');
+    });
+
+    it('should let beforeEach annotations satisfy scenario steps without a Background', function () {
+        /** @Given a feature scenario whose Given annotation is implemented in beforeEach */
+        $fixture = writeFeatureParityFixture('scenario-step-in-before-each');
+
+        /** @When the checker runs without a feature Background */
+        $result = runFeatureParityFixture($fixture['dir']);
+
+        /** @Then the scenario should remain fully covered */
+        expect($result->errors)->toBe([]);
+        expect($result->successes)->toHaveCount(1);
+    });
+
+    it('should isolate beforeEach annotations by describe scope', function () {
+        /** @Given sibling describe scopes with different beforeEach annotations */
+        $fixture = writeFeatureParityFixture('before-each-scope');
+
+        /** @When the checker maps their scenario tests */
+        $result = runFeatureParityFixture($fixture['dir']);
+
+        /** @Then setup annotations should apply only to tests in their own or descendant scope */
+        expect($result->successes)->toHaveCount(2);
+        expect($result->errors)->toHaveCount(1);
+        expect($result->errors[0]['label'])->toContain('sibling scoped scenario');
+        expect($result->errors[0]['message'])
+            ->toContain('Given first scoped setup')
+            ->toContain('Pest     not documented');
     });
 
     it('should match And/But steps with multiline docblocks', function () {

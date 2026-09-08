@@ -4,24 +4,19 @@ declare(strict_types=1);
 
 namespace Gherkish\FeatureParity;
 
-final class TestBlock
+final class SetupBlock
 {
     /**
      * @param  StepDoc[]  $stepComments
      * @param  StepDoc[]  $unimplementedStepComments
-     * @param  SetupBlock[]  $setupBlocks
      * @param  int[]  $scope
      */
     public function __construct(
-        public string $name,
         public string $body,
         public array $stepComments,
         public string $filePath,
         public int $line,
         public array $unimplementedStepComments = [],
-        public bool $ignoreExamples = false,
-        public bool $ignoreMapping = false,
-        public array $setupBlocks = [],
         public array $scope = [],
     ) {}
 }

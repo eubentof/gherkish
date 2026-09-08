@@ -140,6 +140,57 @@ test('User logs in', function (string $email, string $password, string $result) 
 This skips only Examples-to-dataset validation. The checker still validates
 the scenario description, step docblocks, and executable code below each step.
 
+## Background and beforeEach mapping
+
+Background parity is part of the default check and is independent from
+`--strict`. When a feature declares a `Background`, every matching scenario
+test must have an applicable Pest `beforeEach()` whose step docblocks map all
+Background steps. As with scenario steps, each mapped docblock must have
+executable PHP directly below it.
+
+```gherkin
+Background:
+  Given an authenticated administrator
+
+Scenario: User opens the dashboard
+  When the dashboard is requested
+  Then the dashboard is displayed
+```
+
+```php
+beforeEach(function () {
+    /** @Given an authenticated administrator */
+    $this->actingAs(User::factory()->admin()->create());
+});
+
+test('User opens the dashboard', function () {
+    /** @When the dashboard is requested */
+    $response = $this->get('/dashboard');
+
+    /** @Then the dashboard is displayed */
+    $response->assertOk();
+});
+```
+
+Applicable `beforeEach()` step annotations also participate in normal scenario
+mapping when the feature has no `Background`. This allows a `Given` declared in
+a Scenario to be implemented once in shared Pest setup.
+
+Scope follows Pest `describe()` nesting: a top-level `beforeEach()` applies to
+every test in the file, while a setup inside `describe()` applies only to tests
+inside that describe block and its nested descendants. It does not apply to a
+sibling describe block.
+
+Snapshots expose Background coverage once in the feature-level `background`
+entry and list parsed setup annotations under `beforeEach`. Background steps
+are not duplicated in each scenario's step cases. Descriptive command output
+renders one `BACKGROUND` group per feature, and summary case totals count each
+Background step once.
+
+This changes the previous Background behavior: existing feature files whose
+Background steps were ignored must move their matching annotations and
+implementations into an applicable `beforeEach()`.
+
 ## Reverse test mapping
 
 Use `--check-unmapped-tests` to also verify parity in the other direction:

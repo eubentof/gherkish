@@ -177,6 +177,23 @@ class CheckFeaturesCommand extends Command
         $this->newLine();
         $failures = [];
 
+        foreach ($result->backgrounds as $background) {
+            $this->line(sprintf(
+                '<fg=black;bg=blue;options=bold> BACKGROUND </> %s <fg=gray>→ %s</>',
+                $this->escape($this->formatTestPath($background['testPath'])),
+                $this->escape(str_replace(' -> ', ' → ', $background['label'])),
+            ));
+
+            foreach ($background['steps'] as $step) {
+                [$icon, $style] = $step['status'] === 'passed'
+                    ? ['✓', 'fg=green']
+                    : ['⨯', 'fg=red'];
+                $this->line(sprintf('  <%s>%s</> %s', $style, $icon, $this->escape($step['label'])));
+            }
+
+            $this->newLine();
+        }
+
         foreach ($result->cases as $case) {
             $status = match ($case['status']) {
                 'passed' => 'COVERED',
@@ -276,6 +293,9 @@ class CheckFeaturesCommand extends Command
             $totalCases = array_sum(array_map(
                 static fn (array $case): int => count($case['steps']),
                 $result->cases,
+            )) + array_sum(array_map(
+                static fn (array $background): int => count($background['steps']),
+                $result->backgrounds,
             ));
             $caseLabel = $totalCases === 1 ? 'case' : 'cases';
             $this->line(sprintf(

@@ -1,0 +1,14 @@
+<?php
+
+beforeEach(function () {
+    /** @Given shared state exists */
+    $this->state = true;
+});
+
+test('uses shared setup annotation', function () {
+    /** @When the scenario runs */
+    $result = $this->state;
+
+    /** @Then it succeeds */
+    expect($result)->toBeTrue();
+});

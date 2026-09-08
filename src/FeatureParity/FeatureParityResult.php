@@ -12,6 +12,7 @@ final class FeatureParityResult
      * @param  string[]  $successes
      * @param  array<int, array{status:string,label:string,message:string|null,testPath:string,steps:array<int,array{status:string,label:string}>,examples:list<array{block:int,label:string|null,values:array<string,string>}>,examplesStatus:string|null}>  $cases
      * @param  array<int, array{label:string,message:string}>  $unmappedTests
+     * @param  array<int, array{label:string,testPath:string,steps:array<int,array{status:string,label:string}>}>  $backgrounds
      */
     public function __construct(
         public int $scenarios = 0,
@@ -20,6 +21,7 @@ final class FeatureParityResult
         public array $successes = [],
         public array $cases = [],
         public array $unmappedTests = [],
+        public array $backgrounds = [],
     ) {}
 
     public function addSuccess(
@@ -91,6 +93,15 @@ final class FeatureParityResult
             'steps' => [],
             'examples' => [],
             'examplesStatus' => null,
+        ];
+    }
+
+    public function addBackground(string $label, string $testPath, array $steps): void
+    {
+        $this->backgrounds[] = [
+            'label' => $label,
+            'testPath' => $testPath,
+            'steps' => $steps,
         ];
     }
 

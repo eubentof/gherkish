@@ -1,0 +1,16 @@
+Feature: beforeEach scope
+  Scenario: first scoped scenario
+    Given first scoped setup
+    When the first scenario runs
+    Then it succeeds
+
+  Scenario: nested scoped scenario
+    Given first scoped setup
+    And nested scoped setup
+    When the nested scenario runs
+    Then it succeeds
+
+  Scenario: sibling scoped scenario
+    Given first scoped setup
+    When the sibling scenario runs
+    Then it succeeds

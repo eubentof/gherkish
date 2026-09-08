@@ -1,0 +1,46 @@
+<?php
+
+describe('first scope', function () {
+    beforeEach(function () {
+        /** @Given first scoped setup */
+        $this->first = true;
+    });
+
+    test('first scoped scenario', function () {
+        /** @When the first scenario runs */
+        $result = $this->first;
+
+        /** @Then it succeeds */
+        expect($result)->toBeTrue();
+    });
+
+    describe('nested scope', function () {
+        beforeEach(function () {
+            /** @And nested scoped setup */
+            $this->nested = true;
+        });
+
+        test('nested scoped scenario', function () {
+            /** @When the nested scenario runs */
+            $result = $this->first && $this->nested;
+
+            /** @Then it succeeds */
+            expect($result)->toBeTrue();
+        });
+    });
+});
+
+describe('sibling scope', function () {
+    beforeEach(function () {
+        /** @Given sibling scoped setup */
+        $this->sibling = true;
+    });
+
+    test('sibling scoped scenario', function () {
+        /** @When the sibling scenario runs */
+        $result = $this->sibling;
+
+        /** @Then it succeeds */
+        expect($result)->toBeTrue();
+    });
+});

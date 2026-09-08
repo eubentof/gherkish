@@ -1,7 +1,14 @@
 <?php
 
-it('scenario-specific path', function () {
-    /** @When the scenario performs a unique action */
-    /** @Then only scenario steps should be recorded */
+beforeEach(function () {
+    /** @Given a shared setup step for the feature */
+    $this->sharedSetup = true;
 });
 
+it('scenario-specific path', function () {
+    /** @When the scenario performs a unique action */
+    expect($this->sharedSetup)->toBeTrue();
+
+    /** @Then only scenario steps should be recorded */
+    expect(true)->toBeTrue();
+});
