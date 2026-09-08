@@ -142,6 +142,11 @@ the scenario description, step docblocks, and executable code below each step.
 
 ## Command options
 
+By default, the checker prints one compact status character per scenario: a
+green `.` for covered, a red `F` for failed, or a yellow `S` for skipped.
+Failure details are collected after the progress dots. Use `--descriptive` to
+show the full scenario, step, and Examples output.
+
 Pass these options to `php artisan gherkish:check`:
 
 | Option | Description | Environment variable |
@@ -151,6 +156,7 @@ Pass these options to `php artisan gherkish:check`:
 | `--file=tests/Feature/Users/CreateUser.feature` | Alias for `--feature`. | `FEATURE_PARITY_FILE` or `FEATURE_PARITY_FEATURE` |
 | `--f=tests/Feature/Users/CreateUser.feature` | Short alias for `--feature`. | `FEATURE_PARITY_FILE` or `FEATURE_PARITY_FEATURE` |
 | `--check-outline-datasets` | Validate Scenario Outline datasets against their Examples tables. | `FEATURE_PARITY_CHECK_OUTLINE_DATASETS=1` |
+| `--descriptive` | Show every scenario, step, and Examples table instead of compact status dots. | — |
 | `--snapshot=storage/app/feature-parity.json` | Write the coverage snapshot as JSON. | `FEATURE_PARITY_SNAPSHOT` |
 
 ## Development

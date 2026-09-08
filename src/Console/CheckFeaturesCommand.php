@@ -15,6 +15,7 @@ class CheckFeaturesCommand extends Command
         .'{--file= : Alias for --feature}'
         .'{--f= : Alias for --feature}'
         .'{--check-outline-datasets : Validate Scenario Outline datasets against their Examples tables}'
+        .'{--descriptive : Show every scenario, step, and Examples table}'
         .'{--snapshot= : Write the coverage snapshot JSON to the given path}';
 
     protected $description = 'Verify that every feature scenario has a matching Pest implementation.';
@@ -127,6 +128,40 @@ class CheckFeaturesCommand extends Command
 
     private function renderResult(FeatureParityResult $result): void
     {
+        if ($this->option('descriptive')) {
+            $this->renderDescriptiveResult($result);
+        } else {
+            $this->renderCompactResult($result);
+        }
+
+        $this->renderSummary($result);
+    }
+
+    private function renderCompactResult(FeatureParityResult $result): void
+    {
+        $this->newLine();
+        $progress = array_map(
+            static fn (array $case): string => match ($case['status']) {
+                'passed' => '<fg=green>.</>',
+                'failed' => '<fg=red;options=bold>F</>',
+                default => '<fg=yellow;options=bold>S</>',
+            },
+            $result->cases,
+        );
+
+        foreach (array_chunk($progress, 60) as $line) {
+            $this->line('  '.implode('', $line));
+        }
+
+        $this->newLine();
+        $this->renderFailures(array_values(array_filter(
+            $result->cases,
+            static fn (array $case): bool => $case['status'] === 'failed' && $case['message'] !== null,
+        )));
+    }
+
+    private function renderDescriptiveResult(FeatureParityResult $result): void
+    {
         $this->newLine();
         $failures = [];
 
@@ -176,27 +211,40 @@ class CheckFeaturesCommand extends Command
             $this->newLine();
         }
 
-        if ($failures !== []) {
-            $this->line('<fg=red>'.str_repeat('─', 76).'</>');
+        $this->renderFailures($failures);
+    }
 
-            foreach ($failures as $failure) {
-                $testPath = $failure['testPath'] ?: 'Unmapped feature scenario';
-                $scenario = str_replace(' -> ', ' → ', $failure['label']);
-
-                $this->line(sprintf(
-                    '<fg=white;bg=red;options=bold> FAILED </> <options=bold>%s</> <fg=gray>→ %s</>',
-                    $this->formatTestPath($testPath),
-                    $scenario,
-                ));
-
-                foreach (explode("\n", $failure['message']) as $line) {
-                    $this->line('  '.$line);
-                }
-
-                $this->newLine();
-            }
+    /**
+     * @param  list<array<string, mixed>>  $failures
+     */
+    private function renderFailures(array $failures): void
+    {
+        if ($failures === []) {
+            return;
         }
 
+        $this->line('<fg=red>'.str_repeat('─', 76).'</>');
+
+        foreach ($failures as $failure) {
+            $testPath = $failure['testPath'] ?: 'Unmapped feature scenario';
+            $scenario = str_replace(' -> ', ' → ', $failure['label']);
+
+            $this->line(sprintf(
+                '<fg=white;bg=red;options=bold> FAILED </> <options=bold>%s</> <fg=gray>→ %s</>',
+                $this->formatTestPath($testPath),
+                $scenario,
+            ));
+
+            foreach (explode("\n", $failure['message']) as $line) {
+                $this->line('  '.$line);
+            }
+
+            $this->newLine();
+        }
+    }
+
+    private function renderSummary(FeatureParityResult $result): void
+    {
         $parts = [];
         if ($result->errors !== []) {
             $parts[] = sprintf('<fg=red;options=bold>%d failed</>', count($result->errors));

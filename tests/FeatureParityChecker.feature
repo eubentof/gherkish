@@ -64,6 +64,16 @@ Feature: FeatureParityChecker parsing
     When the feature parity command checks their directory
     Then the command reports the scenario in a colored Pest-style heading and its steps as checks
 
+  Scenario: should render compact status dots by default
+    Given a feature and test with matching scenarios and steps
+    When the feature parity command checks their directory in compact mode
+    Then the command reports a status dot and summary without descriptive checks
+
+  Scenario: should retain failure details in compact mode
+    Given a feature and test with an unimplemented step
+    When the feature parity command checks the failing directory in compact mode
+    Then the command reports compact statuses and collects failure details at the end
+
   Scenario: should render failed command checks in a Pest-style test file group
     Given a feature and test with an unimplemented step
     When the feature parity command checks the failing directory

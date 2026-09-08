@@ -210,10 +210,14 @@ describe('gherkish:check command', function () {
         /** @When the feature parity command checks their directory */
         $command = $this->artisan('gherkish:check', [
             '--dir' => $fixture['dir'],
+            '--descriptive' => true,
             '--no-ansi' => true,
         ]);
         $ansiOutput = new BufferedOutput(OutputInterface::VERBOSITY_NORMAL, false);
-        $ansiExitCode = Artisan::call('gherkish:check', ['--dir' => $fixture['dir']], $ansiOutput);
+        $ansiExitCode = Artisan::call('gherkish:check', [
+            '--dir' => $fixture['dir'],
+            '--descriptive' => true,
+        ], $ansiOutput);
 
         /** @Then the command reports the scenario in a colored Pest-style heading and its steps as checks */
         $command
@@ -229,6 +233,47 @@ describe('gherkish:check command', function () {
             ->toContain("\e[32m✓\e[39m Given a mapped command scenario");
     });
 
+    it('should render compact status dots by default', function () {
+        /** @Given a feature and test with matching scenarios and steps */
+        $fixture = writeFeatureParityFixture('command-success');
+
+        /** @When the feature parity command checks their directory in compact mode */
+        $output = new BufferedOutput;
+        $exitCode = Artisan::call('gherkish:check', [
+            '--dir' => $fixture['dir'],
+            '--no-ansi' => true,
+        ], $output);
+
+        /** @Then the command reports a status dot and summary without descriptive checks */
+        expect($exitCode)->toBe(0);
+        expect($output->fetch())
+            ->toContain("  .\n")
+            ->toContain('Scenarios:  1 covered')
+            ->not->toContain('Given a mapped command scenario')
+            ->not->toContain('COVERED');
+    });
+
+    it('should retain failure details in compact mode', function () {
+        /** @Given a feature and test with an unimplemented step */
+        $fixture = writeFeatureParityFixture('command-failure');
+
+        /** @When the feature parity command checks the failing directory in compact mode */
+        $output = new BufferedOutput;
+        $exitCode = Artisan::call('gherkish:check', [
+            '--dir' => $fixture['dir'],
+            '--no-ansi' => true,
+        ], $output);
+
+        /** @Then the command reports compact statuses and collects failure details at the end */
+        expect($exitCode)->toBe(1);
+        expect($output->fetch())
+            ->toContain("  F.\n")
+            ->toContain('FAILED  Tests\\.feature-parity-fixtures\\command-failure\\FixtureTest')
+            ->toContain('has Pest step docblocks without executable PHP code directly below them')
+            ->toContain('Scenarios:  1 failed, 1 covered')
+            ->not->toContain('⨯ Given a mapped command scenario');
+    });
+
     it('should render failed command checks in a Pest-style test file group', function () {
         /** @Given a feature and test with an unimplemented step */
         $fixture = writeFeatureParityFixture('command-failure');
@@ -236,6 +281,7 @@ describe('gherkish:check command', function () {
         /** @When the feature parity command checks the failing directory */
         $command = $this->artisan('gherkish:check', [
             '--dir' => $fixture['dir'],
+            '--descriptive' => true,
             '--no-ansi' => true,
         ]);
 
@@ -261,6 +307,7 @@ describe('gherkish:check command', function () {
         /** @When the checker runs without outline dataset validation */
         $command = $this->artisan('gherkish:check', [
             '--dir' => $fixture['dir'],
+            '--descriptive' => true,
             '--no-ansi' => true,
         ]);
 
@@ -279,6 +326,7 @@ describe('gherkish:check command', function () {
         $command = $this->artisan('gherkish:check', [
             '--dir' => $fixture['dir'],
             '--check-outline-datasets' => true,
+            '--descriptive' => true,
             '--no-ansi' => true,
         ]);
 
@@ -299,6 +347,7 @@ describe('gherkish:check command', function () {
         $command = $this->artisan('gherkish:check', [
             '--dir' => $fixture['dir'],
             '--check-outline-datasets' => true,
+            '--descriptive' => true,
             '--no-ansi' => true,
         ]);
 
@@ -358,6 +407,7 @@ describe('gherkish:check command', function () {
         $command = $this->artisan('gherkish:check', [
             '--dir' => $fixture['dir'],
             '--check-outline-datasets' => true,
+            '--descriptive' => true,
             '--no-ansi' => true,
         ]);
 
