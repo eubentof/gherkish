@@ -617,8 +617,7 @@ final class FeatureParityChecker
 
         if (empty($matchingTests)) {
             throw new FeatureParityException(sprintf(
-                "Failed asserting that scenario \"%s\" (%s) is covered: no matching test() description in %s.\nSequences (✔ documented | ✘ missing):\n%s\nTests inspected: %s",
-                $scenario->title,
+                "No Pest test description matches this scenario.\n\nFeature  %s\nPest     %s\n\n%s\n\nTests inspected: %s",
                 $scenarioLocation,
                 $testReference,
                 self::formatSequenceCoverage($feature, $scenario, $matchingTests),
@@ -669,8 +668,7 @@ final class FeatureParityChecker
         if ($matched === null) {
             $primaryTest = self::primaryTestReference($matchingTests) ?? $testReference;
             throw new FeatureParityException(sprintf(
-                "Failed asserting that scenario \"%s\" (%s) is covered: Pest tests in %s do not cover all steps.\nSequences (✔ documented | ✘ missing):\n%s\n",
-                $scenario->title,
+                "Scenario is missing one or more mapped Pest cases.\n\nFeature  %s\nPest     %s\n\n%s",
                 $scenarioLocation,
                 $primaryTest,
                 self::formatSequenceCoverage($feature, $scenario, $matchingTests),
@@ -1580,6 +1578,17 @@ final class FeatureParityChecker
             return 'tests/'.$relative;
         }
 
+        $workingDirectory = getcwd();
+
+        if (is_string($workingDirectory)) {
+            $workingDirectory = str_replace('\\', '/', realpath($workingDirectory) ?: $workingDirectory);
+            $workingDirectory = rtrim($workingDirectory, '/');
+
+            if ($normalized === $workingDirectory || str_starts_with($normalized, $workingDirectory.'/')) {
+                return ltrim(substr($normalized, strlen($workingDirectory)), '/');
+            }
+        }
+
         return $normalized;
     }
 
@@ -1610,52 +1619,50 @@ final class FeatureParityChecker
     private static function formatSequenceCoverage(FeatureDoc $feature, ScenarioDoc $scenario, array $tests): string
     {
         if (empty($scenario->steps)) {
-            $featurePath = self::relativeTestPath($feature->path);
-
-            return sprintf(
-                "📄 Feature: %s (%s)\n🎯 Scenario: %s (%s:%d)\n    (no steps defined)",
-                $feature->title ?: $feature->basename,
-                $featurePath,
-                $scenario->title,
-                $featurePath,
-                $scenario->line
-            );
+            return 'Case mapping (0 documented, 0 missing)';
         }
 
         $red = "\033[31m";
         $green = "\033[32m";
-        $yellow = "\033[33m";
-        $blue = "\033[34m";
-        $purple = "\033[35m";
-        $bgRed = "\033[41m";
-        $bgGreen = "\033[42m";
         $reset = "\033[0m";
 
-        $lines = [];
-        $featureLabel = $feature->title ?: $feature->basename;
         $featurePath = self::relativeTestPath($feature->path);
-        $lines[] = sprintf('📄  Feature: %s (%s)', $featureLabel, $featurePath);
-        $lines[] = sprintf('🎯  Scenario: %s (%s:%d)', $scenario->title, $featurePath, $scenario->line);
-        foreach ($scenario->steps as $index => $step) {
+        $mappedSteps = [];
+
+        foreach ($scenario->steps as $step) {
             $signature = self::normalizeStepSignature($step->keyword, $step->text);
             $matchInfo = self::findStepCommentLocation($tests, $signature);
-            $found = $matchInfo !== null;
-            $icon = $found ? "{$green}✔{$reset}" : "{$red}✘{$reset}";
-            $lines[] = sprintf('    %s %s %s', $icon, $step->keyword, $step->text);
-            $lines[] = sprintf('        — %s:%d', $featurePath, $step->line);
+            $mappedSteps[] = [$step, $matchInfo];
+        }
+
+        $documented = count(array_filter(
+            $mappedSteps,
+            static fn (array $mappedStep): bool => $mappedStep[1] !== null,
+        ));
+        $missing = count($mappedSteps) - $documented;
+        $lines = [sprintf('Case mapping (%d documented, %d missing)', $documented, $missing), ''];
+
+        foreach ($mappedSteps as [$step, $matchInfo]) {
+            $icon = $matchInfo !== null ? "{$green}✓{$reset}" : "{$red}✕{$reset}";
+            $lines[] = sprintf('  %s %s %s', $icon, $step->keyword, $step->text);
+            $lines[] = sprintf('    Feature  %s:%d', $featurePath, $step->line);
 
             if ($matchInfo !== null) {
                 $testBlock = $matchInfo['test'];
                 $comment = $matchInfo['step'];
                 $lines[] = sprintf(
-                    '        — %s:%d',
+                    '    Pest     %s:%d',
                     self::relativeTestPath($testBlock->filePath),
                     $comment->line,
                 );
+            } else {
+                $lines[] = '    Pest     not documented';
             }
+
+            $lines[] = '';
         }
 
-        return implode("\n", $lines);
+        return rtrim(implode("\n", $lines));
     }
 
     private static function findStepCommentLocation(array $tests, string $signature): ?array

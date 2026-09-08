@@ -238,7 +238,8 @@ describe('gherkish:check command', function () {
     it('should render compact status dots by default', function () {
         /** @Given a feature and test with matching scenarios and steps */
         $fixture = writeFeatureParityFixture('command-success');
-        
+
+        /** @When the feature parity command checks their directory in compact mode */
         $output = new BufferedOutput;
         $exitCode = Artisan::call('gherkish:check', [
             '--dir' => $fixture['dir'],
@@ -331,6 +332,28 @@ describe('gherkish:check command', function () {
             ->expectsOutputToContain('has Pest step docblocks without executable PHP code directly below them')
             ->expectsOutputToContain('Scenarios:  1 missing, 1 covered')
             ->assertFailed();
+    });
+
+    it('should group missing case mappings with relative locations', function () {
+        /** @Given a feature scenario with incomplete Pest case mappings */
+        $fixture = writeFeatureParityFixture('missing-steps');
+
+        /** @When the feature parity command renders the missing case details */
+        $output = new BufferedOutput;
+        $exitCode = Artisan::call('gherkish:check', [
+            '--dir' => $fixture['dir'],
+            '--no-ansi' => true,
+        ], $output);
+
+        /** @Then the output groups case statuses with relative Feature and Pest locations */
+        expect($exitCode)->toBe(1);
+        expect($output->fetch())
+            ->toContain('Scenario is missing one or more mapped Pest cases.')
+            ->toContain('Case mapping (1 documented, 3 missing)')
+            ->toContain('Feature  tests/.feature-parity-fixtures/missing-steps/Fixture.feature:3')
+            ->toContain('Pest     tests/.feature-parity-fixtures/missing-steps/FixtureTest.php:4')
+            ->toContain('Pest     not documented')
+            ->not->toContain(base_path());
     });
 
     it('should leave scenario outline dataset validation disabled by default', function () {

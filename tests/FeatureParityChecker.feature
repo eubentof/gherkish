@@ -84,6 +84,11 @@ Feature: FeatureParityChecker parsing
     When the feature parity command checks the failing directory
     Then the command reports the failed scenario as checks and collects its details at the end
 
+  Scenario: should group missing case mappings with relative locations
+    Given a feature scenario with incomplete Pest case mappings
+    When the feature parity command renders the missing case details
+    Then the output groups case statuses with relative Feature and Pest locations
+
   Scenario: should render scenario outline examples as a Gherkin table
     Given a scenario outline with example rows and a matching Pest test
     When the feature parity command checks the outline directory
