@@ -1,0 +1,10 @@
+<?php
+
+test('should keep <question> and <error> placeholders literal', function () {
+    /** @Given the <question> placeholder remains literal */
+    expect(true)->toBeTrue();
+    /** @Then the <error> placeholder remains literal */
+    expect(true)->toBeTrue();
+})->with([
+    ['<question>', '<error>'],
+]);

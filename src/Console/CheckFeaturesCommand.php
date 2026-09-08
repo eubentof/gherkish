@@ -6,6 +6,7 @@ use Gherkish\FeatureParity\FeatureParityChecker;
 use Gherkish\FeatureParity\FeatureParityConfigurationException;
 use Gherkish\FeatureParity\FeatureParityResult;
 use Illuminate\Console\Command;
+use Symfony\Component\Console\Formatter\OutputFormatter;
 
 class CheckFeaturesCommand extends Command
 {
@@ -39,7 +40,7 @@ class CheckFeaturesCommand extends Command
         try {
             $result = FeatureParityChecker::run();
         } catch (FeatureParityConfigurationException $exception) {
-            $this->error($exception->getMessage());
+            $this->error($this->escape($exception->getMessage()));
             $exitCode = self::FAILURE;
         }
 
@@ -183,8 +184,8 @@ class CheckFeaturesCommand extends Command
                 '<%s> %s </> %s <fg=gray>→ %s</>',
                 $style,
                 $status,
-                $this->formatTestPath($testPath),
-                $scenario,
+                $this->escape($this->formatTestPath($testPath)),
+                $this->escape($scenario),
             ));
 
             foreach ($case['steps'] as $step) {
@@ -194,7 +195,7 @@ class CheckFeaturesCommand extends Command
                     default => ['!', 'fg=yellow'],
                 };
 
-                $this->line(sprintf('  <%s>%s</> %s', $iconStyle, $icon, $step['label']));
+                $this->line(sprintf('  <%s>%s</> %s', $iconStyle, $icon, $this->escape($step['label'])));
             }
 
             $this->renderExamplesTables($case['examples'], $case['examplesStatus']);
@@ -204,7 +205,7 @@ class CheckFeaturesCommand extends Command
             } elseif ($case['status'] === 'skipped' && $case['message'] !== null) {
                 $this->newLine();
                 foreach (explode("\n", $case['message']) as $line) {
-                    $this->line('    '.$line);
+                    $this->line('    '.$this->escape($line));
                 }
             }
 
@@ -231,12 +232,12 @@ class CheckFeaturesCommand extends Command
 
             $this->line(sprintf(
                 '<fg=white;bg=red;options=bold> FAILED </> <options=bold>%s</> <fg=gray>→ %s</>',
-                $this->formatTestPath($testPath),
-                $scenario,
+                $this->escape($this->formatTestPath($testPath)),
+                $this->escape($scenario),
             ));
 
             foreach (explode("\n", $failure['message']) as $line) {
-                $this->line('  '.$line);
+                $this->line('  '.$this->escape($line));
             }
 
             $this->newLine();
@@ -324,10 +325,10 @@ class CheckFeaturesCommand extends Command
                 default => ['✓', 'fg=green'],
             };
 
-            $this->line(sprintf('  <%s>%s</> %s', $style, $icon, $heading));
-            $this->line('    '.$this->formatExamplesRow($headers, $widths));
+            $this->line(sprintf('  <%s>%s</> %s', $style, $icon, $this->escape($heading)));
+            $this->line('    '.$this->escape($this->formatExamplesRow($headers, $widths)));
             foreach ($tableRows as $tableRow) {
-                $this->line('    '.$this->formatExamplesRow($tableRow, $widths));
+                $this->line('    '.$this->escape($this->formatExamplesRow($tableRow, $widths)));
             }
         }
     }
@@ -355,5 +356,10 @@ class CheckFeaturesCommand extends Command
     private function formatExampleCell(string $value): string
     {
         return str_replace(['\\', '|'], ['\\\\', '\\|'], $value);
+    }
+
+    private function escape(string $value): string
+    {
+        return OutputFormatter::escape($value);
     }
 }

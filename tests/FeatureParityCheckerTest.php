@@ -274,6 +274,38 @@ describe('gherkish:check command', function () {
             ->not->toContain('⨯ Given a mapped command scenario');
     });
 
+    it('should render Symfony console tags as literal text', function () {
+        /** @Given feature output contains placeholders matching Symfony console styles */
+        $fixture = writeFeatureParityFixture('console-markup');
+
+        /** @When the feature parity command renders descriptive output */
+        $plainOutput = new BufferedOutput;
+        $plainExitCode = Artisan::call('gherkish:check', [
+            '--dir' => $fixture['dir'],
+            '--descriptive' => true,
+            '--no-ansi' => true,
+        ], $plainOutput);
+        $ansiOutput = new BufferedOutput(OutputInterface::VERBOSITY_NORMAL, false);
+        $ansiExitCode = Artisan::call('gherkish:check', [
+            '--dir' => $fixture['dir'],
+            '--descriptive' => true,
+        ], $ansiOutput);
+
+        /** @Then the placeholders should remain literal without activating console styles */
+        expect($plainExitCode)->toBe(0);
+        expect($plainOutput->fetch())
+            ->toContain('Console <info> output → should keep <question> and <error> placeholders literal')
+            ->toContain('Given the <question> placeholder remains literal')
+            ->toContain('Then the <error> placeholder remains literal')
+            ->toContain('Examples: <comment> values (validation disabled):')
+            ->toContain('| <question> | <error> |');
+
+        expect($ansiExitCode)->toBe(0);
+        expect($ansiOutput->fetch())
+            ->not->toContain("\e[37;41m")
+            ->not->toContain("\e[30;46m");
+    });
+
     it('should render failed command checks in a Pest-style test file group', function () {
         /** @Given a feature and test with an unimplemented step */
         $fixture = writeFeatureParityFixture('command-failure');

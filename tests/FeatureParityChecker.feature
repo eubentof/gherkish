@@ -74,6 +74,11 @@ Feature: FeatureParityChecker parsing
     When the feature parity command checks the failing directory in compact mode
     Then the command reports compact statuses and collects failure details at the end
 
+  Scenario: should render Symfony console tags as literal text
+    Given feature output contains placeholders matching Symfony console styles
+    When the feature parity command renders descriptive output
+    Then the placeholders should remain literal without activating console styles
+
   Scenario: should render failed command checks in a Pest-style test file group
     Given a feature and test with an unimplemented step
     When the feature parity command checks the failing directory

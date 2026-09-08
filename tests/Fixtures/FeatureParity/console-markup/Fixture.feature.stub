@@ -1,0 +1,9 @@
+Feature: Console <info> output
+  Scenario Outline: should keep <question> and <error> placeholders literal
+    Given the <question> placeholder remains literal
+    Then the <error> placeholder remains literal
+
+    Examples: <comment> values
+      | question   | error   |
+      | <question> | <error> |
+
