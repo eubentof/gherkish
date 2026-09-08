@@ -5,6 +5,9 @@ use Gherkish\Examples\ExamplesException;
 use Gherkish\FeatureParity\FeatureParityChecker;
 use Gherkish\FeatureParity\FeatureParityResult;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Facades\Artisan;
+use Symfony\Component\Console\Output\BufferedOutput;
+use Symfony\Component\Console\Output\OutputInterface;
 
 beforeEach(function () {
     $this->filesystem = new Filesystem;
@@ -325,13 +328,17 @@ PHP
         /** @When the checker runs for that Pest test */
         $result = runFeatureParityFixture($fixture['dir']);
 
-        /** @Then every step docblock without executable code directly below it should be reported */
+        /** @Then every invalid docblock should report its exact feature step and Pest locations */
         expect($result->errors)->toHaveCount(1);
         expect($result->errors[0]['message'])
-            ->toContain('every Pest step docblock must have executable PHP code directly below it')
+            ->toContain('has Pest step docblocks without executable PHP code directly below them')
             ->toContain('Given a step followed by another step docblock')
+            ->toContain("Feature step: tests/.feature-parity-fixtures/unimplemented-step-docblocks/Fixture.feature:3\n  Pest docblock: tests/.feature-parity-fixtures/unimplemented-step-docblocks/FixtureTest.php:4")
             ->toContain('And a step followed by a regular comment')
+            ->toContain("Feature step: tests/.feature-parity-fixtures/unimplemented-step-docblocks/Fixture.feature:5\n  Pest docblock: tests/.feature-parity-fixtures/unimplemented-step-docblocks/FixtureTest.php:7")
             ->toContain('Then a step followed by a blank line')
+            ->toContain("Feature step: tests/.feature-parity-fixtures/unimplemented-step-docblocks/Fixture.feature:6\n  Pest docblock: tests/.feature-parity-fixtures/unimplemented-step-docblocks/FixtureTest.php:10")
+            ->not->toContain('Fixture.feature:2')
             ->not->toContain('- When a step is followed by executable code');
     });
 
@@ -405,11 +412,126 @@ PHP
         );
 
         /** @When the feature parity command checks their directory */
-        $command = $this->artisan('gherkish:check', ['--dir' => $fixture['dir']]);
+        $command = $this->artisan('gherkish:check', [
+            '--dir' => $fixture['dir'],
+            '--no-ansi' => true,
+        ]);
+        $ansiOutput = new BufferedOutput(OutputInterface::VERBOSITY_NORMAL, false);
+        $ansiExitCode = Artisan::call('gherkish:check', ['--dir' => $fixture['dir']], $ansiOutput);
 
-        /** @Then the command reports success */
+        /** @Then the command reports the scenario in a colored Pest-style heading and its steps as checks */
         $command
-            ->expectsOutputToContain('All 1 documented scenarios are mapped to Pest tests.')
+            ->expectsOutputToContain('COVERED  Tests\.feature-parity-fixtures\command-success\FixtureTest → Command integration → should run through Artisan')
+            ->expectsOutputToContain('✓ Given a mapped command scenario')
+            ->expectsOutputToContain('✓ When the package command runs')
+            ->expectsOutputToContain('✓ Then it exits successfully')
+            ->expectsOutputToContain('Scenarios:  1 covered')
+            ->assertSuccessful();
+        expect($ansiExitCode)->toBe(0);
+        expect($ansiOutput->fetch())
+            ->toContain("\e[30;42;1m COVERED \e[39;49;22m")
+            ->toContain("\e[32m✓\e[39m Given a mapped command scenario");
+    });
+
+    it('should render failed command checks in a Pest-style test file group', function () {
+        /** @Given a feature and test with an unimplemented step */
+        $fixture = writeFeatureParityFixture(
+            'command-failure',
+            <<<'FEATURE'
+Feature: Command integration
+  Scenario: should reject an empty step
+    Given a mapped command scenario
+    When the package command runs
+    Then it exits successfully
+
+  Scenario: should accept implemented steps
+    Given another mapped command scenario
+    Then its implementation is accepted
+FEATURE,
+            <<<'PHP'
+<?php
+
+test('should reject an empty step', function () {
+    /** @Given a mapped command scenario */
+
+    /** @When the package command runs */
+    expect(true)->toBeTrue();
+    /** @Then it exits successfully */
+    expect(true)->toBeTrue();
+});
+
+test('should accept implemented steps', function () {
+    /** @Given another mapped command scenario */
+    expect(true)->toBeTrue();
+    /** @Then its implementation is accepted */
+    expect(true)->toBeTrue();
+});
+PHP
+        );
+
+        /** @When the feature parity command checks the failing directory */
+        $command = $this->artisan('gherkish:check', [
+            '--dir' => $fixture['dir'],
+            '--no-ansi' => true,
+        ]);
+
+        /** @Then the command reports the failed scenario as checks and collects its details at the end */
+        $command
+            ->expectsOutputToContain('FAIL  Tests\.feature-parity-fixtures\command-failure\FixtureTest → Command integration → should reject an empty step')
+            ->expectsOutputToContain('⨯ Given a mapped command scenario')
+            ->expectsOutputToContain('✓ When the package command runs')
+            ->expectsOutputToContain('✓ Then it exits successfully')
+            ->expectsOutputToContain('COVERED  Tests\.feature-parity-fixtures\command-failure\FixtureTest → Command integration → should accept implemented steps')
+            ->expectsOutputToContain('✓ Given another mapped command scenario')
+            ->expectsOutputToContain('✓ Then its implementation is accepted')
+            ->expectsOutputToContain('FAILED  Tests\.feature-parity-fixtures\command-failure\FixtureTest → Command integration → should reject an empty step')
+            ->expectsOutputToContain('has Pest step docblocks without executable PHP code directly below them')
+            ->expectsOutputToContain('Scenarios:  1 failed, 1 covered')
+            ->assertFailed();
+    });
+
+    it('should render scenario outline examples as a Gherkin table', function () {
+        /** @Given a scenario outline with example rows and a matching Pest test */
+        $fixture = writeFeatureParityFixture(
+            'command-examples',
+            <<<'FEATURE'
+Feature: Login datasets
+  Scenario Outline: User logs in
+    Given a user with email "<email>"
+    When they log in with password "<password>"
+    Then the result should be "<result>"
+
+    Examples:
+      | email            | password | result  |
+      | john@test.com    | correct  | success |
+      | missing@test.com | anything | failure |
+FEATURE,
+            <<<'PHP'
+<?php
+
+test('User logs in', function () {
+    /** @Given a user with email "<email>" */
+    expect(true)->toBeTrue();
+    /** @When they log in with password "<password>" */
+    expect(true)->toBeTrue();
+    /** @Then the result should be "<result>" */
+    expect(true)->toBeTrue();
+});
+PHP
+        );
+
+        /** @When the feature parity command checks the outline directory */
+        $command = $this->artisan('gherkish:check', [
+            '--dir' => $fixture['dir'],
+            '--no-ansi' => true,
+        ]);
+
+        /** @Then the example headers and rows are reported as a Gherkin table */
+        $command
+            ->expectsOutputToContain('✓ Examples:')
+            ->expectsOutputToContain('| email            | password | result  |')
+            ->expectsOutputToContain('| john@test.com    | correct  | success |')
+            ->expectsOutputToContain('| missing@test.com | anything | failure |')
             ->assertSuccessful();
     });
 

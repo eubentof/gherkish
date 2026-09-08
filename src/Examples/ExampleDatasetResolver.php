@@ -21,7 +21,7 @@ final class ExampleDatasetResolver
             ));
         }
 
-        $outlines = $this->parseOutlines($featurePath);
+        $outlines = $this->outlines($featurePath);
         if ($outlines === []) {
             throw new ExamplesException(sprintf('No Scenario Outline was found in "%s".', $featurePath));
         }
@@ -118,7 +118,7 @@ final class ExampleDatasetResolver
     /**
      * @return list<ScenarioOutline>
      */
-    private function parseOutlines(string $featurePath): array
+    public function outlines(string $featurePath): array
     {
         $lines = file($featurePath, FILE_IGNORE_NEW_LINES) ?: [];
         $outlines = [];

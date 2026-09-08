@@ -27,6 +27,7 @@ class CheckFeaturesCommand extends Command
 
     public function handle(): int
     {
+        $this->enableAnsiColors();
         $this->captureEnvState();
         $this->applyRuntimeOverrides();
 
@@ -122,27 +123,173 @@ class CheckFeaturesCommand extends Command
     private function renderResult(FeatureParityResult $result): void
     {
         $this->newLine();
+        $failures = [];
 
-        if ($result->hasErrors()) {
-            $this->error('❌ Missing mappings detected:');
-            foreach ($result->errors as $error) {
-                $this->line(sprintf('  • %s', $error['label']));
-                $this->line($error['message']);
+        foreach ($result->cases as $case) {
+            $status = match ($case['status']) {
+                'passed' => 'COVERED',
+                'failed' => 'FAIL',
+                default => 'WARN',
+            };
+            $style = match ($status) {
+                'COVERED' => 'fg=black;bg=green;options=bold',
+                'FAIL' => 'fg=white;bg=red;options=bold',
+                default => 'fg=black;bg=yellow;options=bold',
+            };
+            $testPath = $case['testPath'] ?: 'Unmapped feature scenario';
+            $scenario = str_replace(' -> ', ' → ', $case['label']);
+
+            $this->line(sprintf(
+                '<%s> %s </> %s <fg=gray>→ %s</>',
+                $style,
+                $status,
+                $this->formatTestPath($testPath),
+                $scenario,
+            ));
+
+            foreach ($case['steps'] as $step) {
+                [$icon, $iconStyle] = match ($step['status']) {
+                    'passed' => ['✓', 'fg=green'],
+                    'failed' => ['⨯', 'fg=red'],
+                    default => ['!', 'fg=yellow'],
+                };
+
+                $this->line(sprintf('  <%s>%s</> %s', $iconStyle, $icon, $step['label']));
+            }
+
+            $this->renderExamplesTables($case['examples']);
+
+            if ($case['status'] === 'failed' && $case['message'] !== null) {
+                $failures[] = $case;
+            } elseif ($case['status'] === 'skipped' && $case['message'] !== null) {
+                $this->newLine();
+                foreach (explode("\n", $case['message']) as $line) {
+                    $this->line('    '.$line);
+                }
+            }
+
+            $this->newLine();
+        }
+
+        if ($failures !== []) {
+            $this->line('<fg=red>'.str_repeat('─', 76).'</>');
+
+            foreach ($failures as $failure) {
+                $testPath = $failure['testPath'] ?: 'Unmapped feature scenario';
+                $scenario = str_replace(' -> ', ' → ', $failure['label']);
+
+                $this->line(sprintf(
+                    '<fg=white;bg=red;options=bold> FAILED </> <options=bold>%s</> <fg=gray>→ %s</>',
+                    $this->formatTestPath($testPath),
+                    $scenario,
+                ));
+
+                foreach (explode("\n", $failure['message']) as $line) {
+                    $this->line('  '.$line);
+                }
+
                 $this->newLine();
             }
-        } else {
-            $passed = count($result->successes);
-            $this->info(sprintf('✅ All %d documented scenarios are mapped to Pest tests.', $passed));
         }
 
+        $parts = [];
+        if ($result->errors !== []) {
+            $parts[] = sprintf('<fg=red;options=bold>%d failed</>', count($result->errors));
+        }
+        if ($result->successes !== []) {
+            $parts[] = sprintf('<fg=green;options=bold>%d covered</>', count($result->successes));
+        }
         if ($result->skipped !== []) {
-            $this->comment('⚠️  Skipped scenarios:');
-            foreach ($result->skipped as $skip) {
-                $this->line(sprintf('  • %s — %s', $skip['label'], $skip['message']));
+            $parts[] = sprintf('<fg=yellow;options=bold>%d skipped</>', count($result->skipped));
+        }
+
+        $this->line(sprintf(
+            '  <options=bold>Scenarios:</>  %s',
+            implode(', ', $parts),
+        ));
+    }
+
+    private function enableAnsiColors(): void
+    {
+        if ($this->input->hasParameterOption('--no-ansi', true)) {
+            return;
+        }
+
+        $this->output->setDecorated(true);
+    }
+
+    private function formatTestPath(string $testPath): string
+    {
+        $normalized = str_replace('\\', '/', $testPath);
+        $testsPosition = strrpos($normalized, '/tests/');
+
+        if ($testsPosition !== false) {
+            $normalized = substr($normalized, $testsPosition + 1);
+        }
+
+        if (str_starts_with($normalized, 'tests/')) {
+            $normalized = 'Tests/'.substr($normalized, strlen('tests/'));
+        }
+
+        return str_replace('/', '\\', preg_replace('/\.php$/', '', $normalized) ?? $normalized);
+    }
+
+    /**
+     * @param  list<array{block:int,label:string|null,values:array<string,string>}>  $examples
+     */
+    private function renderExamplesTables(array $examples): void
+    {
+        $blocks = [];
+        foreach ($examples as $example) {
+            $blocks[$example['block']][] = $example;
+        }
+
+        foreach ($blocks as $rows) {
+            $heading = $rows[0]['label'] === null ? 'Examples:' : 'Examples: '.$rows[0]['label'];
+            $headers = array_map($this->formatExampleCell(...), array_keys($rows[0]['values']));
+            $tableRows = array_map(
+                fn (array $row): array => array_map($this->formatExampleCell(...), array_values($row['values'])),
+                $rows,
+            );
+            $widths = [];
+
+            foreach ($headers as $column => $header) {
+                $widths[$column] = $this->displayWidth($header);
+                foreach ($tableRows as $tableRow) {
+                    $widths[$column] = max($widths[$column], $this->displayWidth($tableRow[$column]));
+                }
+            }
+
+            $this->line(sprintf('  <fg=green>✓</> %s', $heading));
+            $this->line('    '.$this->formatExamplesRow($headers, $widths));
+            foreach ($tableRows as $tableRow) {
+                $this->line('    '.$this->formatExamplesRow($tableRow, $widths));
             }
         }
+    }
 
-        $this->line(sprintf('Scenarios processed: %d', $result->scenarios));
-        $this->line(sprintf('Failures: %d | Skipped: %d', count($result->errors), count($result->skipped)));
+    /**
+     * @param  list<string>  $cells
+     * @param  list<int>  $widths
+     */
+    private function formatExamplesRow(array $cells, array $widths): string
+    {
+        $padded = array_map(
+            fn (string $cell, int $column): string => $cell.str_repeat(' ', $widths[$column] - $this->displayWidth($cell)),
+            $cells,
+            array_keys($cells),
+        );
+
+        return '| '.implode(' | ', $padded).' |';
+    }
+
+    private function displayWidth(string $value): int
+    {
+        return function_exists('mb_strwidth') ? mb_strwidth($value) : strlen($value);
+    }
+
+    private function formatExampleCell(string $value): string
+    {
+        return str_replace(['\\', '|'], ['\\\\', '\\|'], $value);
     }
 }

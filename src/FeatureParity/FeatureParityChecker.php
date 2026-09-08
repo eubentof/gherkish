@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Gherkish\FeatureParity;
 
+use Gherkish\Examples\ExampleDatasetResolver;
+use Gherkish\Examples\ExamplesException;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use SplFileInfo;
@@ -61,19 +63,75 @@ final class FeatureParityChecker
                     $feature->title ?: $feature->basename,
                     $scenario->title
                 );
+                $testPaths = $featureTestPaths ?? [self::pairTestPath($feature->path)];
+                $testPath = self::relativeTestPath($testPaths[0]);
 
                 try {
-                    self::assertScenarioParity($feature, $scenario, $featureTestPaths);
-                    $result->addSuccess($scenarioLabel);
+                    $matchedTest = self::assertScenarioParity($feature, $scenario, $featureTestPaths);
+                    $result->addSuccess(
+                        $scenarioLabel,
+                        self::relativeTestPath($matchedTest->filePath),
+                        self::scenarioStepCases($scenario, $testPaths, 'passed'),
+                        $scenario->examples,
+                    );
                 } catch (FeatureParitySkippedException $exception) {
-                    $result->addSkipped($scenarioLabel, $exception->getMessage());
+                    $result->addSkipped(
+                        $scenarioLabel,
+                        $exception->getMessage(),
+                        $testPath,
+                        self::scenarioStepCases($scenario, $testPaths, 'skipped'),
+                        $scenario->examples,
+                    );
                 } catch (FeatureParityException $exception) {
-                    $result->addError($scenarioLabel, $exception->getMessage());
+                    $result->addError(
+                        $scenarioLabel,
+                        $exception->getMessage(),
+                        $testPath,
+                        self::scenarioStepCases($scenario, $testPaths),
+                        $scenario->examples,
+                    );
                 }
             }
         }
 
         return $result;
+    }
+
+    /**
+     * @return array<int, array{status:string,label:string}>
+     */
+    private static function scenarioStepCases(
+        ScenarioDoc $scenario,
+        ?array $testPaths,
+        ?string $forcedStatus = null,
+    ): array {
+        $implementedSignatures = [];
+
+        if ($forcedStatus === null) {
+            $existingTestPaths = array_values(array_filter($testPaths ?? [], 'is_file'));
+            foreach ($existingTestPaths as $path) {
+                foreach (self::findMatchingTests($scenario, self::parsePestFile($path)->tests) as $test) {
+                    $unimplementedLines = array_column($test->unimplementedStepComments, 'line');
+                    foreach ($test->stepComments as $step) {
+                        if (! in_array($step->line, $unimplementedLines, true)) {
+                            $implementedSignatures[self::normalizeStepSignature($step->keyword, $step->text)] = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        return array_map(
+            static function (StepDoc $step) use ($forcedStatus, $implementedSignatures): array {
+                $signature = self::normalizeStepSignature($step->keyword, $step->text);
+
+                return [
+                    'status' => $forcedStatus ?? (isset($implementedSignatures[$signature]) ? 'passed' : 'failed'),
+                    'label' => sprintf('%s %s', $step->keyword, $step->text),
+                ];
+            },
+            $scenario->steps,
+        );
     }
 
     public static function resetSelection(): void
@@ -346,6 +404,15 @@ final class FeatureParityChecker
     private static function parseFeature(string $path): FeatureDoc
     {
         $lines = file($path, FILE_IGNORE_NEW_LINES) ?: [];
+        $outlinesByLine = [];
+
+        try {
+            foreach ((new ExampleDatasetResolver)->outlines($path) as $outline) {
+                $outlinesByLine[$outline->line] = $outline;
+            }
+        } catch (ExamplesException) {
+            // Example validation remains the responsibility of Gherkish::examples().
+        }
 
         $featureTitle = null;
         $scenarios = [];
@@ -361,7 +428,12 @@ final class FeatureParityChecker
                 return;
             }
 
-            $scenarios[] = new ScenarioDoc($currentScenario['title'], $currentScenario['steps'], $currentScenario['line'] ?? 1);
+            $scenarios[] = new ScenarioDoc(
+                $currentScenario['title'],
+                $currentScenario['steps'],
+                $currentScenario['line'] ?? 1,
+                $currentScenario['examples'],
+            );
             $currentScenario = null;
         };
 
@@ -413,10 +485,24 @@ final class FeatureParityChecker
                 $collectingExamples = false;
                 $flushScenario();
 
+                $examples = [];
+                if (isset($outlinesByLine[$lineNumber])) {
+                    foreach ($outlinesByLine[$lineNumber]->examples as $blockIndex => $block) {
+                        foreach ($block->rows as $row) {
+                            $examples[] = [
+                                'block' => $blockIndex,
+                                'label' => $block->label,
+                                'values' => $row,
+                            ];
+                        }
+                    }
+                }
+
                 $currentScenario = [
                     'title' => trim($match[1]),
                     'steps' => [],
                     'line' => $lineNumber,
+                    'examples' => $examples,
                 ];
 
                 $inBackground = false;
@@ -460,7 +546,7 @@ final class FeatureParityChecker
         );
     }
 
-    private static function assertScenarioParity(FeatureDoc $feature, ScenarioDoc $scenario, ?array $testPaths = null): void
+    private static function assertScenarioParity(FeatureDoc $feature, ScenarioDoc $scenario, ?array $testPaths = null): TestBlock
     {
         $relativeFeature = self::relativeTestPath($feature->path);
         if (empty($scenario->steps)) {
@@ -514,25 +600,31 @@ final class FeatureParityChecker
             ));
         }
 
-        $scenarioStepSignatures = array_flip(self::scenarioStepSequence($scenario));
+        $scenarioStepsBySignature = [];
+        foreach ($scenario->steps as $step) {
+            $scenarioStepsBySignature[self::normalizeStepSignature($step->keyword, $step->text)] = $step;
+        }
+
         $unimplementedStepComments = [];
         foreach ($matchingTests as $test) {
             foreach ($test->unimplementedStepComments as $step) {
                 $signature = self::normalizeStepSignature($step->keyword, $step->text);
-                if (! isset($scenarioStepSignatures[$signature])) {
+                if (! isset($scenarioStepsBySignature[$signature])) {
                     continue;
                 }
 
-                $unimplementedStepComments[] = [$test, $step];
+                $unimplementedStepComments[] = [$test, $step, $scenarioStepsBySignature[$signature]];
             }
         }
 
         if ($unimplementedStepComments !== []) {
             $violations = array_map(
                 static fn (array $violation): string => sprintf(
-                    '- %s %s (%s:%d)',
+                    "- %s %s\n  Feature step: %s:%d\n  Pest docblock: %s:%d",
                     $violation[1]->keyword,
                     $violation[1]->text,
+                    $relativeFeature,
+                    $violation[2]->line,
                     self::relativeTestPath($violation[0]->filePath),
                     $violation[1]->line,
                 ),
@@ -540,9 +632,8 @@ final class FeatureParityChecker
             );
 
             throw new FeatureParityException(sprintf(
-                "Failed asserting that scenario \"%s\" (%s) is covered: every Pest step docblock must have executable PHP code directly below it.\n%s",
+                "Scenario \"%s\" has Pest step docblocks without executable PHP code directly below them.\n\n%s",
                 $scenario->title,
-                $scenarioLocation,
                 implode("\n", $violations),
             ));
         }
@@ -559,6 +650,8 @@ final class FeatureParityChecker
                 self::formatSequenceCoverage($feature, $scenario, $matchingTests),
             ));
         }
+
+        return $matched['test'];
     }
 
     private static function parsePestFile(string $path): PestFile

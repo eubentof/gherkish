@@ -47,7 +47,7 @@ Feature: FeatureParityChecker parsing
   Scenario: should reject step docblocks without executable code directly below them
     Given a Pest test contains step docblocks followed by another step, a comment, or a blank line
     When the checker runs for that Pest test
-    Then every step docblock without executable code directly below it should be reported
+    Then every invalid docblock should report its exact feature step and Pest locations
 
   Scenario: should flag missing paired test files
     Given a feature file without a corresponding Pest test file
@@ -62,7 +62,17 @@ Feature: FeatureParityChecker parsing
   Scenario: should register the package command and report successful parity
     Given a feature and test with matching scenarios and steps
     When the feature parity command checks their directory
-    Then the command reports success
+    Then the command reports the scenario in a colored Pest-style heading and its steps as checks
+
+  Scenario: should render failed command checks in a Pest-style test file group
+    Given a feature and test with an unimplemented step
+    When the feature parity command checks the failing directory
+    Then the command reports the failed scenario as checks and collects its details at the end
+
+  Scenario: should render scenario outline examples as a Gherkin table
+    Given a scenario outline with example rows and a matching Pest test
+    When the feature parity command checks the outline directory
+    Then the example headers and rows are reported as a Gherkin table
 
   Scenario: should return a failure for an invalid selection
     Given a feature directory that does not exist
