@@ -19,6 +19,8 @@ beforeEach(function () {
 afterEach(function () {
     putenv('FEATURE_PARITY_DIR');
     unset($_ENV['FEATURE_PARITY_DIR']);
+    putenv('FEATURE_PARITY_CHECK_OUTLINE_DATASETS');
+    unset($_ENV['FEATURE_PARITY_CHECK_OUTLINE_DATASETS']);
     FeatureParityChecker::resetSelection();
     $this->filesystem->deleteDirectory($this->fixtureRoot);
 });
@@ -490,6 +492,45 @@ PHP
             ->assertFailed();
     });
 
+    it('should leave scenario outline dataset validation disabled by default', function () {
+        /** @Given a scenario outline whose Pest test has no dataset and no validation flag */
+        $fixture = writeFeatureParityFixture(
+            'outline-validation-disabled',
+            <<<'FEATURE'
+Feature: State datasets
+  Scenario Outline: unchecked states are handled
+    Given the state is "<state>"
+    Then it is accepted
+
+    Examples:
+      | state  |
+      | active |
+FEATURE,
+            <<<'PHP'
+<?php
+
+test('unchecked states are handled', function () {
+    /** @Given the state is "<state>" */
+    expect(true)->toBeTrue();
+    /** @Then it is accepted */
+    expect(true)->toBeTrue();
+});
+PHP
+        );
+
+        /** @When the checker runs without outline dataset validation */
+        $command = $this->artisan('gherkish:check', [
+            '--dir' => $fixture['dir'],
+            '--no-ansi' => true,
+        ]);
+
+        /** @Then the scenario should be covered and its Examples table marked as not validated */
+        $command
+            ->expectsOutputToContain('COVERED')
+            ->expectsOutputToContain('! Examples (validation disabled):')
+            ->assertSuccessful();
+    });
+
     it('should render scenario outline examples as a Gherkin table', function () {
         /** @Given a scenario outline with example rows and a matching Pest test */
         $fixture = writeFeatureParityFixture(
@@ -516,13 +557,17 @@ test('User logs in', function () {
     expect(true)->toBeTrue();
     /** @Then the result should be "<result>" */
     expect(true)->toBeTrue();
-});
+})->with([
+    ['john@test.com', 'correct', 'success'],
+    ['missing@test.com', 'anything', 'failure'],
+]);
 PHP
         );
 
         /** @When the feature parity command checks the outline directory */
         $command = $this->artisan('gherkish:check', [
             '--dir' => $fixture['dir'],
+            '--check-outline-datasets' => true,
             '--no-ansi' => true,
         ]);
 
@@ -532,6 +577,211 @@ PHP
             ->expectsOutputToContain('| email            | password | result  |')
             ->expectsOutputToContain('| john@test.com    | correct  | success |')
             ->expectsOutputToContain('| missing@test.com | anything | failure |')
+            ->assertSuccessful();
+    });
+
+    it('should require a mapped Pest dataset for scenario outlines', function () {
+        /** @Given a scenario outline whose matching Pest test has no dataset */
+        $fixture = writeFeatureParityFixture(
+            'outline-without-dataset',
+            <<<'FEATURE'
+Feature: State datasets
+  Scenario Outline: state is handled
+    Given the state is "<state>"
+    Then it is accepted
+
+    Examples:
+      | state  |
+      | active |
+FEATURE,
+            <<<'PHP'
+<?php
+
+test('state is handled', function () {
+    /** @Given the state is "<state>" */
+    expect(true)->toBeTrue();
+    /** @Then it is accepted */
+    expect(true)->toBeTrue();
+});
+PHP
+        );
+
+        /** @When the checker validates the outline dataset */
+        $command = $this->artisan('gherkish:check', [
+            '--dir' => $fixture['dir'],
+            '--check-outline-datasets' => true,
+            '--no-ansi' => true,
+        ]);
+
+        /** @Then the Examples table should be reported as unmapped */
+        $command
+            ->expectsOutputToContain('⨯ Examples:')
+            ->expectsOutputToContain('must map its Examples table to the Pest test dataset')
+            ->expectsOutputToContain('Use ->with(Gherkish::examples())')
+            ->assertFailed();
+    });
+
+    it('should accept explicit arrays matching scenario outline examples', function () {
+        /** @Given a scenario outline whose Pest dataset is a literal array of its example values */
+        $fixture = writeFeatureParityFixture(
+            'outline-explicit-dataset',
+            <<<'FEATURE'
+Feature: State datasets
+  Scenario Outline: explicit states are handled
+    Given the state is "<state>"
+    Then the result is "<result>"
+
+    Examples:
+      | state    | result   |
+      | active   | accepted |
+      | inactive | rejected |
+FEATURE,
+            <<<'PHP'
+<?php
+
+test('explicit states are handled', function (string $state, string $result) {
+    /** @Given the state is "<state>" */
+    expect($state)->not->toBeEmpty();
+    /** @Then the result is "<result>" */
+    expect($result)->not->toBeEmpty();
+})->with([
+    ['active', 'accepted'],
+    ['inactive', 'rejected'],
+]);
+PHP
+        );
+
+        /** @When the checker validates the explicit outline dataset */
+        $result = runFeatureParityFixture($fixture['dir'], checkOutlineDatasets: true);
+
+        /** @Then the literal dataset should cover the Examples table */
+        expect($result->errors)->toBe([]);
+        expect($result->successes)->toHaveCount(1);
+    });
+
+    it('should reject explicit arrays that differ from scenario outline examples', function () {
+        /** @Given a scenario outline whose literal Pest dataset contains different values */
+        $fixture = writeFeatureParityFixture(
+            'outline-mismatched-dataset',
+            <<<'FEATURE'
+Feature: State datasets
+  Scenario Outline: mismatched states are rejected
+    Given the state is "<state>"
+    Then the result is "<result>"
+
+    Examples:
+      | state  | result   |
+      | active | accepted |
+FEATURE,
+            <<<'PHP'
+<?php
+
+test('mismatched states are rejected', function (string $state, string $result) {
+    /** @Given the state is "<state>" */
+    expect($state)->not->toBeEmpty();
+    /** @Then the result is "<result>" */
+    expect($result)->not->toBeEmpty();
+})->with([
+    ['inactive', 'rejected'],
+]);
+PHP
+        );
+
+        /** @When the checker validates the mismatched outline dataset */
+        $result = runFeatureParityFixture($fixture['dir'], checkOutlineDatasets: true);
+
+        /** @Then the literal dataset should not cover the Examples table */
+        expect($result->errors)->toHaveCount(1);
+        expect($result->errors[0]['message'])
+            ->toContain('must map its Examples table to the Pest test dataset')
+            ->toContain('literal array containing the exact example values');
+        expect($result->cases[0]['examplesStatus'])->toBe('failed');
+    });
+
+    it('should accept labeled Gherkish examples datasets', function () {
+        /** @Given a scenario outline with labeled Examples blocks mapped by name */
+        $fixture = writeFeatureParityFixture(
+            'outline-labeled-dataset',
+            <<<'FEATURE'
+Feature: State datasets
+  Scenario Outline: labeled states are handled
+    Given the state is "<state>"
+    Then the result is "<result>"
+
+    Examples: Active states
+      | state  | result   |
+      | active | accepted |
+
+    Examples: Inactive states
+      | state    | result   |
+      | inactive | rejected |
+FEATURE,
+            <<<'PHP'
+<?php
+
+use Gherkish\Gherkish;
+
+test('labeled states are handled', function (string $state, string $result) {
+    /** @Given the state is "<state>" */
+    expect($state)->not->toBeEmpty();
+    /** @Then the result is "<result>" */
+    expect($result)->not->toBeEmpty();
+})->with([
+    ...Gherkish::examples('Active states'),
+    ...Gherkish::examples('Inactive states'),
+]);
+PHP
+        );
+
+        /** @When the checker validates the labeled outline dataset */
+        $result = runFeatureParityFixture($fixture['dir'], checkOutlineDatasets: true);
+
+        /** @Then every labeled Examples block should be covered */
+        expect($result->errors)->toBe([]);
+        expect($result->successes)->toHaveCount(1);
+    });
+
+    it('should allow custom outline datasets to opt out of examples validation', function () {
+        /** @Given a scenario outline uses a custom dataset with the ignore examples comment */
+        $fixture = writeFeatureParityFixture(
+            'outline-ignored-custom-dataset',
+            <<<'FEATURE'
+Feature: State datasets
+  Scenario Outline: custom states are handled
+    Given the state is "<state>"
+    Then it is accepted
+
+    Examples:
+      | state  |
+      | active |
+FEATURE,
+            <<<'PHP'
+<?php
+
+// @gherkish-ignore-examples
+test('custom states are handled', function (string $state) {
+    /** @Given the state is "<state>" */
+    expect($state)->not->toBeEmpty();
+    /** @Then it is accepted */
+    expect(true)->toBeTrue();
+})->with(customStateDataset());
+PHP
+        );
+
+        /** @When the checker validates the ignored custom dataset */
+        $result = runFeatureParityFixture($fixture['dir'], checkOutlineDatasets: true);
+        $command = $this->artisan('gherkish:check', [
+            '--dir' => $fixture['dir'],
+            '--check-outline-datasets' => true,
+            '--no-ansi' => true,
+        ]);
+
+        /** @Then the scenario and steps should be covered without validating its Examples table */
+        expect($result->errors)->toBe([]);
+        expect($result->successes)->toHaveCount(1);
+        expect($result->cases[0]['examplesStatus'])->toBe('ignored');
+        $command
+            ->expectsOutputToContain('! Examples (validation ignored):')
             ->assertSuccessful();
     });
 
@@ -665,16 +915,22 @@ function snapshotFeatureParityFixture(string $dir): array
     return $snapshot;
 }
 
-function runFeatureParityFixture(string $dir): FeatureParityResult
+function runFeatureParityFixture(string $dir, bool $checkOutlineDatasets = false): FeatureParityResult
 {
     putenv('FEATURE_PARITY_DIR='.$dir);
     $_ENV['FEATURE_PARITY_DIR'] = $dir;
+    if ($checkOutlineDatasets) {
+        putenv('FEATURE_PARITY_CHECK_OUTLINE_DATASETS=1');
+        $_ENV['FEATURE_PARITY_CHECK_OUTLINE_DATASETS'] = '1';
+    }
     FeatureParityChecker::resetSelection();
 
     $result = FeatureParityChecker::run();
 
     putenv('FEATURE_PARITY_DIR');
     unset($_ENV['FEATURE_PARITY_DIR']);
+    putenv('FEATURE_PARITY_CHECK_OUTLINE_DATASETS');
+    unset($_ENV['FEATURE_PARITY_CHECK_OUTLINE_DATASETS']);
     FeatureParityChecker::resetSelection();
 
     return $result;

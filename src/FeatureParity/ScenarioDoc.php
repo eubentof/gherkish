@@ -15,5 +15,6 @@ final class ScenarioDoc
         public array $steps,
         public int $line,
         public array $examples = [],
+        public bool $isOutline = false,
     ) {}
 }

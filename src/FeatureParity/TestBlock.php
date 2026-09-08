@@ -17,5 +17,6 @@ final class TestBlock
         public string $filePath,
         public int $line,
         public array $unimplementedStepComments = [],
+        public bool $ignoreExamples = false,
     ) {}
 }

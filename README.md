@@ -113,19 +113,48 @@ The feature must use the normal same-directory pairing convention, such as
 outline contains exactly one `Examples` block and required when it contains
 more than one.
 
-## Command options
+With `--check-outline-datasets`, `gherkish:check` also verifies that every
+Scenario Outline maps its Examples rows to the matching Pest test. Use
+`Gherkish::examples()`, combine labeled
+blocks with `Gherkish::examples('Label')`, or provide a static literal dataset
+whose values exactly match the Examples table:
 
-```bash
-php artisan gherkish:check --dir=tests/Feature
-php artisan gherkish:check --feature=tests/Feature/Users/CreateUser.feature
-php artisan gherkish:check --file=tests/Feature/Users/CreateUser.feature
-php artisan gherkish:check --f=tests/Feature/Users/CreateUser.feature
-php artisan gherkish:check --snapshot=storage/app/feature-parity.json
+```php
+test('User logs in', function (string $email, string $password, string $result) {
+    // ...
+})->with([
+    ['john@test.com', 'correct', 'success'],
+    ['missing@test.com', 'anything', 'failure'],
+]);
 ```
 
-The equivalent environment variables are `FEATURE_PARITY_DIR`,
-`FEATURE_PARITY_FILE` (or `FEATURE_PARITY_FEATURE`), and
-`FEATURE_PARITY_SNAPSHOT`.
+Gherkish does not execute dynamic dataset providers while checking parity.
+Datasets that cannot be verified statically should use `Gherkish::examples()`.
+If a custom provider is required, place the scoped ignore comment directly
+above the Pest test:
+
+```php
+// @gherkish-ignore-examples
+test('User logs in', function (string $email, string $password, string $result) {
+    // Scenario and step parity are still checked.
+})->with(customLoginDataset());
+```
+
+This skips only Examples-to-dataset validation. The checker still validates
+the scenario description, step docblocks, and executable code below each step.
+
+## Command options
+
+Pass these options to `php artisan gherkish:check`:
+
+| Option | Description | Environment variable |
+| --- | --- | --- |
+| `--dir=tests/Feature` | Limit the check to feature files inside a directory. | `FEATURE_PARITY_DIR` |
+| `--feature=tests/Feature/Users/CreateUser.feature` | Check a specific feature file. | `FEATURE_PARITY_FILE` or `FEATURE_PARITY_FEATURE` |
+| `--file=tests/Feature/Users/CreateUser.feature` | Alias for `--feature`. | `FEATURE_PARITY_FILE` or `FEATURE_PARITY_FEATURE` |
+| `--f=tests/Feature/Users/CreateUser.feature` | Short alias for `--feature`. | `FEATURE_PARITY_FILE` or `FEATURE_PARITY_FEATURE` |
+| `--check-outline-datasets` | Validate Scenario Outline datasets against their Examples tables. | `FEATURE_PARITY_CHECK_OUTLINE_DATASETS=1` |
+| `--snapshot=storage/app/feature-parity.json` | Write the coverage snapshot as JSON. | `FEATURE_PARITY_SNAPSHOT` |
 
 ## Development
 

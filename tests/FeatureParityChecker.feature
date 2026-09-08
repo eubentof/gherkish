@@ -74,6 +74,36 @@ Feature: FeatureParityChecker parsing
     When the feature parity command checks the outline directory
     Then the example headers and rows are reported as a Gherkin table
 
+  Scenario: should require a mapped Pest dataset for scenario outlines
+    Given a scenario outline whose matching Pest test has no dataset
+    When the checker validates the outline dataset
+    Then the Examples table should be reported as unmapped
+
+  Scenario: should leave scenario outline dataset validation disabled by default
+    Given a scenario outline whose Pest test has no dataset and no validation flag
+    When the checker runs without outline dataset validation
+    Then the scenario should be covered and its Examples table marked as not validated
+
+  Scenario: should accept explicit arrays matching scenario outline examples
+    Given a scenario outline whose Pest dataset is a literal array of its example values
+    When the checker validates the explicit outline dataset
+    Then the literal dataset should cover the Examples table
+
+  Scenario: should reject explicit arrays that differ from scenario outline examples
+    Given a scenario outline whose literal Pest dataset contains different values
+    When the checker validates the mismatched outline dataset
+    Then the literal dataset should not cover the Examples table
+
+  Scenario: should accept labeled Gherkish examples datasets
+    Given a scenario outline with labeled Examples blocks mapped by name
+    When the checker validates the labeled outline dataset
+    Then every labeled Examples block should be covered
+
+  Scenario: should allow custom outline datasets to opt out of examples validation
+    Given a scenario outline uses a custom dataset with the ignore examples comment
+    When the checker validates the ignored custom dataset
+    Then the scenario and steps should be covered without validating its Examples table
+
   Scenario: should return a failure for an invalid selection
     Given a feature directory that does not exist
     When the feature parity command checks that directory

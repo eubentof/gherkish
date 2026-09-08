@@ -14,6 +14,7 @@ class CheckFeaturesCommand extends Command
         .'{--feature= : Only check a specific feature file}'
         .'{--file= : Alias for --feature}'
         .'{--f= : Alias for --feature}'
+        .'{--check-outline-datasets : Validate Scenario Outline datasets against their Examples tables}'
         .'{--snapshot= : Write the coverage snapshot JSON to the given path}';
 
     protected $description = 'Verify that every feature scenario has a matching Pest implementation.';
@@ -55,7 +56,7 @@ class CheckFeaturesCommand extends Command
 
     private function captureEnvState(): void
     {
-        foreach (['FEATURE_PARITY_DIR', 'FEATURE_PARITY_FILE', 'FEATURE_PARITY_FEATURE', 'FEATURE_PARITY_SNAPSHOT'] as $key) {
+        foreach (['FEATURE_PARITY_DIR', 'FEATURE_PARITY_FILE', 'FEATURE_PARITY_FEATURE', 'FEATURE_PARITY_CHECK_OUTLINE_DATASETS', 'FEATURE_PARITY_SNAPSHOT'] as $key) {
             $value = getenv($key);
             $this->envBackup[$key] = $value === false ? null : $value;
         }
@@ -82,6 +83,10 @@ class CheckFeaturesCommand extends Command
 
         if ($targetFile !== null) {
             $this->setEnv('FEATURE_PARITY_FILE', $targetFile, affectsSelection: true);
+        }
+
+        if ($this->option('check-outline-datasets')) {
+            $this->setEnv('FEATURE_PARITY_CHECK_OUTLINE_DATASETS', '1');
         }
 
         $snapshot = $this->option('snapshot');
@@ -157,7 +162,7 @@ class CheckFeaturesCommand extends Command
                 $this->line(sprintf('  <%s>%s</> %s', $iconStyle, $icon, $step['label']));
             }
 
-            $this->renderExamplesTables($case['examples']);
+            $this->renderExamplesTables($case['examples'], $case['examplesStatus']);
 
             if ($case['status'] === 'failed' && $case['message'] !== null) {
                 $failures[] = $case;
@@ -237,7 +242,7 @@ class CheckFeaturesCommand extends Command
     /**
      * @param  list<array{block:int,label:string|null,values:array<string,string>}>  $examples
      */
-    private function renderExamplesTables(array $examples): void
+    private function renderExamplesTables(array $examples, ?string $status): void
     {
         $blocks = [];
         foreach ($examples as $example) {
@@ -246,6 +251,11 @@ class CheckFeaturesCommand extends Command
 
         foreach ($blocks as $rows) {
             $heading = $rows[0]['label'] === null ? 'Examples:' : 'Examples: '.$rows[0]['label'];
+            if ($status === 'ignored') {
+                $heading = rtrim($heading, ':').' (validation ignored):';
+            } elseif ($status === 'disabled') {
+                $heading = rtrim($heading, ':').' (validation disabled):';
+            }
             $headers = array_map($this->formatExampleCell(...), array_keys($rows[0]['values']));
             $tableRows = array_map(
                 fn (array $row): array => array_map($this->formatExampleCell(...), array_values($row['values'])),
@@ -260,7 +270,13 @@ class CheckFeaturesCommand extends Command
                 }
             }
 
-            $this->line(sprintf('  <fg=green>✓</> %s', $heading));
+            [$icon, $style] = match ($status) {
+                'failed' => ['⨯', 'fg=red'],
+                'ignored', 'disabled', 'skipped' => ['!', 'fg=yellow'],
+                default => ['✓', 'fg=green'],
+            };
+
+            $this->line(sprintf('  <%s>%s</> %s', $style, $icon, $heading));
             $this->line('    '.$this->formatExamplesRow($headers, $widths));
             foreach ($tableRows as $tableRow) {
                 $this->line('    '.$this->formatExamplesRow($tableRow, $widths));

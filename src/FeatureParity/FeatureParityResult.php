@@ -10,7 +10,7 @@ final class FeatureParityResult
      * @param  array<int, array{label:string,message:string}>  $errors
      * @param  array<int, array{label:string,message:string}>  $skipped
      * @param  string[]  $successes
-     * @param  array<int, array{status:string,label:string,message:string|null,testPath:string,steps:array<int,array{status:string,label:string}>,examples:list<array{block:int,label:string|null,values:array<string,string>}>}>  $cases
+     * @param  array<int, array{status:string,label:string,message:string|null,testPath:string,steps:array<int,array{status:string,label:string}>,examples:list<array{block:int,label:string|null,values:array<string,string>}>,examplesStatus:string|null}>  $cases
      */
     public function __construct(
         public int $scenarios = 0,
@@ -20,8 +20,13 @@ final class FeatureParityResult
         public array $cases = [],
     ) {}
 
-    public function addSuccess(string $label, string $testPath = '', array $steps = [], array $examples = []): void
-    {
+    public function addSuccess(
+        string $label,
+        string $testPath = '',
+        array $steps = [],
+        array $examples = [],
+        string $examplesStatus = 'passed',
+    ): void {
         $this->successes[] = $label;
         $this->cases[] = [
             'status' => 'passed',
@@ -30,12 +35,19 @@ final class FeatureParityResult
             'testPath' => $testPath,
             'steps' => $steps,
             'examples' => $examples,
+            'examplesStatus' => $examples === [] ? null : $examplesStatus,
         ];
         $this->scenarios++;
     }
 
-    public function addError(string $label, string $message, string $testPath = '', array $steps = [], array $examples = []): void
-    {
+    public function addError(
+        string $label,
+        string $message,
+        string $testPath = '',
+        array $steps = [],
+        array $examples = [],
+        string $examplesStatus = 'skipped',
+    ): void {
         $this->errors[] = ['label' => $label, 'message' => $message];
         $this->cases[] = [
             'status' => 'failed',
@@ -44,6 +56,7 @@ final class FeatureParityResult
             'testPath' => $testPath,
             'steps' => $steps,
             'examples' => $examples,
+            'examplesStatus' => $examples === [] ? null : $examplesStatus,
         ];
         $this->scenarios++;
     }
@@ -58,6 +71,7 @@ final class FeatureParityResult
             'testPath' => $testPath,
             'steps' => $steps,
             'examples' => $examples,
+            'examplesStatus' => $examples === [] ? null : 'skipped',
         ];
         $this->scenarios++;
     }

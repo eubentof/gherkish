@@ -73,6 +73,9 @@ final class FeatureParityChecker
                         self::relativeTestPath($matchedTest->filePath),
                         self::scenarioStepCases($scenario, $testPaths, 'passed'),
                         $scenario->examples,
+                        ! self::shouldCheckOutlineDatasets()
+                            ? 'disabled'
+                            : ($matchedTest->ignoreExamples ? 'ignored' : 'passed'),
                     );
                 } catch (FeatureParitySkippedException $exception) {
                     $result->addSkipped(
@@ -81,6 +84,15 @@ final class FeatureParityChecker
                         $testPath,
                         self::scenarioStepCases($scenario, $testPaths, 'skipped'),
                         $scenario->examples,
+                    );
+                } catch (ScenarioOutlineDatasetException $exception) {
+                    $result->addError(
+                        $scenarioLabel,
+                        $exception->getMessage(),
+                        $testPath,
+                        self::scenarioStepCases($scenario, $testPaths, 'passed'),
+                        $scenario->examples,
+                        'failed',
                     );
                 } catch (FeatureParityException $exception) {
                     $result->addError(
@@ -433,6 +445,7 @@ final class FeatureParityChecker
                 $currentScenario['steps'],
                 $currentScenario['line'] ?? 1,
                 $currentScenario['examples'],
+                $currentScenario['isOutline'],
             );
             $currentScenario = null;
         };
@@ -481,7 +494,7 @@ final class FeatureParityChecker
                 continue;
             }
 
-            if (preg_match('/^Scenario(?: Outline)?:\s*(.+)$/i', $trimmed, $match)) {
+            if (preg_match('/^Scenario(?P<outline> Outline)?:\s*(?P<title>.+)$/i', $trimmed, $match)) {
                 $collectingExamples = false;
                 $flushScenario();
 
@@ -499,10 +512,11 @@ final class FeatureParityChecker
                 }
 
                 $currentScenario = [
-                    'title' => trim($match[1]),
+                    'title' => trim($match['title']),
                     'steps' => [],
                     'line' => $lineNumber,
                     'examples' => $examples,
+                    'isOutline' => ($match['outline'] ?? '') !== '',
                 ];
 
                 $inBackground = false;
@@ -651,7 +665,225 @@ final class FeatureParityChecker
             ));
         }
 
+        self::assertScenarioOutlineDataset($feature, $scenario, $matched['test']);
+
         return $matched['test'];
+    }
+
+    private static function assertScenarioOutlineDataset(
+        FeatureDoc $feature,
+        ScenarioDoc $scenario,
+        TestBlock $test,
+    ): void {
+        if (! $scenario->isOutline || ! self::shouldCheckOutlineDatasets() || $test->ignoreExamples) {
+            return;
+        }
+
+        $withArguments = self::extractWithArguments($test->body);
+        $expectedValues = [];
+        $blocks = [];
+        foreach ($scenario->examples as $example) {
+            $blocks[$example['block']]['label'] = $example['label'];
+            $blocks[$example['block']]['rows'][] = $example['values'];
+            array_push($expectedValues, ...array_values($example['values']));
+        }
+
+        if ($withArguments !== [] && self::usesMatchingGherkishExamples($withArguments, $blocks)) {
+            return;
+        }
+
+        foreach ($withArguments as $argument) {
+            $literalValues = self::literalDatasetValues($argument);
+            if ($literalValues !== null && $literalValues === $expectedValues) {
+                return;
+            }
+        }
+
+        $featureLocation = sprintf('%s:%d', self::relativeTestPath($feature->path), $scenario->line);
+        $testLocation = sprintf('%s:%d', self::relativeTestPath($test->filePath), $test->line);
+
+        throw new ScenarioOutlineDatasetException(sprintf(
+            "Scenario Outline \"%s\" must map its Examples table to the Pest test dataset.\n\nUse ->with(Gherkish::examples()), labeled Gherkish::examples(...) calls, or a literal array containing the exact example values.\nFeature outline: %s\nPest test: %s",
+            $scenario->title,
+            $featureLocation,
+            $testLocation,
+        ));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function extractWithArguments(string $body): array
+    {
+        $arguments = [];
+        $offset = 0;
+
+        while (preg_match('/->with\s*\(/', $body, $match, PREG_OFFSET_CAPTURE, $offset)) {
+            $opening = $match[0][1] + strlen($match[0][0]) - 1;
+            $closing = self::matchingDelimiterOffset($body, $opening, '(', ')');
+            if ($closing === null) {
+                break;
+            }
+
+            $arguments[] = trim(substr($body, $opening + 1, $closing - $opening - 1));
+            $offset = $closing + 1;
+        }
+
+        return $arguments;
+    }
+
+    private static function shouldCheckOutlineDatasets(): bool
+    {
+        return filter_var(
+            getenv('FEATURE_PARITY_CHECK_OUTLINE_DATASETS') ?: false,
+            FILTER_VALIDATE_BOOL,
+        );
+    }
+
+    /**
+     * @param  array<int, array{label:string|null,rows:list<array<string,string>>}>  $blocks
+     */
+    private static function usesMatchingGherkishExamples(array $withArguments, array $blocks): bool
+    {
+        $calls = [];
+        $expression = implode("\n", $withArguments);
+        preg_match_all(
+            '/(?:\\\\?Gherkish\\\\)?Gherkish::examples\s*\(\s*(?:(?<quote>[\'\"])(?<label>.*?)\k<quote>\s*)?\)/s',
+            $expression,
+            $matches,
+            PREG_SET_ORDER,
+        );
+
+        foreach ($matches as $match) {
+            $calls[] = ($match['quote'] ?? '') === '' ? null : stripcslashes($match['label']);
+        }
+
+        if ($calls === [] || $blocks === []) {
+            return false;
+        }
+
+        $expectedLabels = array_values(array_map(
+            static fn (array $block): ?string => $block['label'],
+            $blocks,
+        ));
+
+        if (count($expectedLabels) === 1) {
+            return count($calls) === 1
+                && ($calls[0] === null || $calls[0] === $expectedLabels[0]);
+        }
+
+        if (in_array(null, $expectedLabels, true) || in_array(null, $calls, true)) {
+            return false;
+        }
+
+        sort($expectedLabels);
+        sort($calls);
+
+        return $calls === $expectedLabels;
+    }
+
+    /**
+     * @return list<string>|null
+     */
+    private static function literalDatasetValues(string $expression): ?array
+    {
+        $tokens = token_get_all('<?php '.$expression);
+        $values = [];
+
+        foreach ($tokens as $index => $token) {
+            if (is_string($token)) {
+                if (! in_array($token, ['[', ']', '(', ')', ',', '='], true) && $token !== '>') {
+                    return null;
+                }
+
+                continue;
+            }
+
+            [$type, $text] = $token;
+            if (in_array($type, [T_OPEN_TAG, T_WHITESPACE, T_COMMENT, T_DOC_COMMENT, T_ARRAY, T_DOUBLE_ARROW], true)) {
+                continue;
+            }
+
+            if (! in_array($type, [T_CONSTANT_ENCAPSED_STRING, T_LNUMBER, T_DNUMBER], true)) {
+                return null;
+            }
+
+            if (self::nextSignificantTokenIsDoubleArrow($tokens, $index)) {
+                continue;
+            }
+
+            $values[] = $type === T_CONSTANT_ENCAPSED_STRING
+                ? self::decodePhpStringLiteral($text)
+                : $text;
+        }
+
+        return $values;
+    }
+
+    private static function nextSignificantTokenIsDoubleArrow(array $tokens, int $index): bool
+    {
+        for ($next = $index + 1, $count = count($tokens); $next < $count; $next++) {
+            $token = $tokens[$next];
+            if (is_array($token) && in_array($token[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) {
+                continue;
+            }
+
+            return is_array($token) && $token[0] === T_DOUBLE_ARROW;
+        }
+
+        return false;
+    }
+
+    private static function decodePhpStringLiteral(string $literal): string
+    {
+        $quote = $literal[0];
+        $value = substr($literal, 1, -1);
+
+        return $quote === "'"
+            ? str_replace(['\\\\', "\\'"], ['\\', "'"], $value)
+            : stripcslashes($value);
+    }
+
+    private static function matchingDelimiterOffset(
+        string $text,
+        int $openingOffset,
+        string $opening,
+        string $closing,
+    ): ?int {
+        $depth = 0;
+        $string = null;
+        $escaped = false;
+        $length = strlen($text);
+
+        for ($index = $openingOffset; $index < $length; $index++) {
+            $character = $text[$index];
+
+            if ($string !== null) {
+                if ($escaped) {
+                    $escaped = false;
+                } elseif ($character === '\\') {
+                    $escaped = true;
+                } elseif ($character === $string) {
+                    $string = null;
+                }
+
+                continue;
+            }
+
+            if ($character === "'" || $character === '"') {
+                $string = $character;
+
+                continue;
+            }
+
+            if ($character === $opening) {
+                $depth++;
+            } elseif ($character === $closing && --$depth === 0) {
+                return $index;
+            }
+        }
+
+        return null;
     }
 
     private static function parsePestFile(string $path): PestFile
@@ -681,10 +913,35 @@ final class FeatureParityChecker
             $startLine = self::offsetToLineNumber($content, $start);
             $unimplementedStepComments = [];
             $stepComments = self::extractStepCommentsFromText($body, $startLine, $unimplementedStepComments);
-            $tests[] = new TestBlock($name, $body, $stepComments, $path, $startLine, $unimplementedStepComments);
+            $tests[] = new TestBlock(
+                $name,
+                $body,
+                $stepComments,
+                $path,
+                $startLine,
+                $unimplementedStepComments,
+                self::hasIgnoreExamplesComment($content, $start),
+            );
         }
 
         return $tests;
+    }
+
+    private static function hasIgnoreExamplesComment(string $content, int $testOffset): bool
+    {
+        $beforeTest = substr($content, 0, $testOffset);
+        $lines = preg_split('/\R/', $beforeTest) ?: [];
+
+        for ($index = count($lines) - 1; $index >= 0; $index--) {
+            $line = trim($lines[$index]);
+            if ($line === '') {
+                continue;
+            }
+
+            return preg_match('~^//\s*@gherkish-ignore-examples\s*$~i', $line) === 1;
+        }
+
+        return false;
     }
 
     private static function extractStatement(string $content, int $start): string
