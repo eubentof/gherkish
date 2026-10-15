@@ -1,0 +1,2 @@
+<?php
+it('User logs in', function () {})->with(Gherkish::examples());

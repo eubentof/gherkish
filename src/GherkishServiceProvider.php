@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Gherkish;
 
 use Gherkish\Console\CheckFeaturesCommand;
+use Gherkish\Console\SyncFeaturesCommand;
 use Gherkish\FeatureParity\GitStagedFileResolver;
 use Gherkish\FeatureParity\StagedFileResolver;
 use Illuminate\Support\ServiceProvider;
@@ -19,7 +20,7 @@ final class GherkishServiceProvider extends ServiceProvider
     public function boot(): void
     {
         if ($this->app->runningInConsole()) {
-            $this->commands(CheckFeaturesCommand::class);
+            $this->commands([CheckFeaturesCommand::class, SyncFeaturesCommand::class]);
         }
     }
 }

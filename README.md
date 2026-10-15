@@ -60,6 +60,51 @@ Each step docblock must have executable PHP code on the line directly below
 it. Another step docblock, a regular comment, or a blank line is not considered
 an implementation and causes `gherkish:check` to fail.
 
+## Synchronizing feature and test paths
+
+A test can point directly to a feature anywhere in the project using a header
+comment, before imports or test definitions (paths are relative to the project
+root):
+
+```php
+<?php
+
+// @feature app/Domain/Users/CreateUser.feature
+
+use Gherkish\Gherkish;
+```
+
+Repeat `@feature` for a test file that implements multiple features. You can
+also use `/** @feature app/Domain/Users/CreateUser.feature */`.
+
+Synchronize both sides before running the checker or tests:
+
+```bash
+php artisan gherkish:sync --dry-run
+php artisan gherkish:sync
+php artisan gherkish:check
+```
+
+The command scans `app/` and `tests/`, combines existing feature `@tests:`
+declarations and test header `@feature` annotations, and fills in missing links
+on both sides. Features without an explicit `@tests:` section also include their
+existing sibling test. New `@tests:` sections appear below the feature description,
+before Background or scenarios. Existing declarations are retained; sync does
+not infer pairings from scenario titles or remove obsolete links. Remove obsolete
+links on both sides before syncing. Missing declared files fail validation before
+any files are written. Repeating the command makes no further changes.
+
+`Gherkish::examples()` resolves header annotations first, then the conventional
+sibling feature, then features under `app/` and `tests/` whose `@tests:` declaration
+names the calling test. With multiple features, the Pest title must identify one
+Scenario Outline unambiguously. Sync is optional for dataset resolution: the
+written annotations provide a persistent direct lookup without a separate cache
+file or pre-run hook. Run sync after adding test-only annotations so the parity
+checker also receives their corresponding `@tests:` declarations.
+
+Existing sibling pairings and `Gherkish::examples()` calls remain compatible.
+Synchronization edits source files only when explicitly invoked.
+
 ## Scenario Outline datasets
 
 `Gherkish::examples()` reads the `Examples` table from the Scenario Outline

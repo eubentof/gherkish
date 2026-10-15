@@ -1,0 +1,11 @@
+Feature: Login
+  A feature kept beside the domain class.
+
+  Scenario Outline: User logs in
+    Given an email "<email>"
+    When the user logs in
+    Then login succeeds
+
+    Examples:
+      | email         |
+      | user@test.com |

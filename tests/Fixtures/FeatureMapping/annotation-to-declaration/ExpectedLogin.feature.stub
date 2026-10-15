@@ -1,0 +1,14 @@
+Feature: Login
+  A feature kept beside the domain class.
+
+  @tests:
+  - tests/Feature/LoginTest.php
+
+  Scenario Outline: User logs in
+    Given an email "<email>"
+    When the user logs in
+    Then login succeeds
+
+    Examples:
+      | email         |
+      | user@test.com |

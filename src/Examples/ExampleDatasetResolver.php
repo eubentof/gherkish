@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Gherkish\Examples;
 
+use Gherkish\Mapping\FeatureMap;
+
 final class ExampleDatasetResolver
 {
     /**
@@ -11,22 +13,21 @@ final class ExampleDatasetResolver
      */
     public function resolve(string $testPath, int $callLine, ?string $label = null): array
     {
-        $featurePath = preg_replace('/Test\.php$/', '.feature', $testPath);
-
-        if ($featurePath === null || $featurePath === $testPath || ! is_file($featurePath)) {
-            throw new ExamplesException(sprintf(
-                'Gherkish could not find the feature paired with "%s". Expected "%s".',
-                $testPath,
-                $featurePath ?? $testPath,
-            ));
+        $features = FeatureMap::forTest($testPath)->featuresForTest($testPath);
+        $outlines = [];
+        $paths = [];
+        foreach ($features as $featurePath) {
+            foreach ($this->outlines($featurePath) as $outline) {
+                $outlines[] = $outline;
+                $paths[spl_object_id($outline)] = $featurePath;
+            }
         }
-
-        $outlines = $this->outlines($featurePath);
         if ($outlines === []) {
-            throw new ExamplesException(sprintf('No Scenario Outline was found in "%s".', $featurePath));
+            throw new ExamplesException(sprintf('No Scenario Outline was found in "%s".', implode('", "', $features)));
         }
 
         $outline = $this->resolveOutline($outlines, $testPath, $callLine);
+        $featurePath = $paths[spl_object_id($outline)];
         $block = $this->resolveBlock($outline, $label, $featurePath);
 
         return $block->rows;

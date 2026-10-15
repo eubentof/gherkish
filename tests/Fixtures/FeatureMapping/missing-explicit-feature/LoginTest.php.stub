@@ -1,0 +1,3 @@
+<?php
+// @feature app/Missing.feature
+it('User logs in', function () {});
