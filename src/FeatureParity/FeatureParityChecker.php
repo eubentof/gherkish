@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Gherkish\FeatureParity;
 
-use Gherkish\Examples\ExampleDatasetResolver;
-use Gherkish\Examples\ExamplesException;
+use Gherkish\Gherkin\FeatureAdapter;
+use Gherkish\Gherkin\FeatureParser;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use SplFileInfo;
@@ -49,6 +49,14 @@ final class FeatureParityChecker
         }
 
         foreach ($featurePaths as $featurePath) {
+            if (self::shouldCheckStructure()) {
+                $document = (new FeatureParser)->parse($featurePath, validate: true);
+                if ($document->errors !== []) {
+                    array_push($result->structureErrors, ...$document->errors);
+
+                    continue;
+                }
+            }
             $feature = self::parseFeature($featurePath);
             $featureTestPaths = self::resolveFeatureTestPaths($feature);
 
@@ -60,6 +68,7 @@ final class FeatureParityChecker
                 if (
                     empty($scenario->steps)
                     && $feature->backgroundLine === null
+                    && $scenario->ruleBackgroundLine === null
                     && ! self::shouldCheckStrictScenarioStructure()
                 ) {
                     continue;
@@ -75,7 +84,7 @@ final class FeatureParityChecker
 
                 try {
                     self::assertStrictScenarioStructure($feature, $scenario);
-                    $matchedTest = self::assertScenarioParity($feature, $scenario, $featureTestPaths);
+                    $matchedTest = self::assertScenarioParity(self::scopedFeature($feature, $scenario), $scenario, $featureTestPaths);
                     $result->addSuccess(
                         $scenarioLabel,
                         self::relativeTestPath($matchedTest->filePath),
@@ -121,13 +130,21 @@ final class FeatureParityChecker
                     self::backgroundStepCases($feature, $testPaths),
                 );
             }
+            foreach (self::ruleBackgroundFeatures($feature) as $ruleFeature) {
+                $testPaths = $featureTestPaths ?? [self::pairTestPath($feature->path)];
+                $result->addBackground(
+                    ($feature->title ?: $feature->basename).' -> '.$ruleFeature->title.' -> Background',
+                    self::relativeTestPath($testPaths[0]),
+                    self::backgroundStepCases($ruleFeature, $testPaths),
+                );
+            }
         }
 
         if (self::shouldCheckUnmappedTests()) {
             self::checkTestMappings($result, $featurePaths);
         }
 
-        if ($result->cases === []) {
+        if ($result->cases === [] && $result->structureErrors === []) {
             $target = self::selectionTarget($selection);
             $result->addSkipped(
                 'feature parity selection',
@@ -196,6 +213,14 @@ final class FeatureParityChecker
         $featurePaths = self::selectedFeaturePaths();
 
         foreach ($featurePaths as $featurePath) {
+            if (self::shouldCheckStructure()) {
+                $document = (new FeatureParser)->parse($featurePath, validate: true);
+                if ($document->errors !== []) {
+                    $snapshot[self::relativeTestPath($featurePath)] = ['structureErrors' => $document->errors];
+
+                    continue;
+                }
+            }
             $feature = self::parseFeature($featurePath);
             if (empty($feature->scenarios)) {
                 continue;
@@ -213,7 +238,7 @@ final class FeatureParityChecker
             $scenariosPayload = [];
             foreach ($feature->scenarios as $scenario) {
                 $matching = self::findMatchingTests($scenario, $tests);
-                $exact = self::findExactStepMatch($feature, $scenario, $matching);
+                $exact = self::findExactStepMatch(self::scopedFeature($feature, $scenario), $scenario, $matching);
                 $exactTest = $exact['test'] ?? null;
                 $mapping = $exact['mapping'] ?? [];
                 $stepsPayload = [];
@@ -237,6 +262,8 @@ final class FeatureParityChecker
                 }
 
                 $scenariosPayload[$scenario->title] = [
+                    'rule' => $scenario->rule,
+                    'ruleLine' => $scenario->ruleLine,
                     'steps' => $stepsPayload,
                     'coverage' => [
                         'covered' => $coveredSteps,
@@ -268,6 +295,8 @@ final class FeatureParityChecker
 
             $snapshot[$relativeFeature] = [
                 'feature' => $feature->title ?: $feature->basename,
+                'structureErrors' => [],
+                'ruleBackgrounds' => self::ruleBackgroundSnapshots($feature, $tests),
                 'background' => self::backgroundSnapshotPayload($feature, $tests),
                 'scenarios' => $scenariosPayload,
                 'beforeEach' => $setupsPayload,
@@ -293,7 +322,9 @@ final class FeatureParityChecker
         }
 
         $resolved = self::resolvePathInput($target, mustBeFile: false);
-        $path = $resolved ?? (self::projectBasePath().DIRECTORY_SEPARATOR.ltrim($target, DIRECTORY_SEPARATOR));
+        $path = $resolved ?? (str_starts_with($target, DIRECTORY_SEPARATOR)
+            ? $target
+            : self::projectBasePath().DIRECTORY_SEPARATOR.$target);
 
         $directory = dirname($path);
         if (! is_dir($directory)) {
@@ -562,37 +593,11 @@ final class FeatureParityChecker
     private static function declaredFeatureTestPaths(string $featurePath): array
     {
         $paths = [];
-        $collectingTests = false;
-
-        foreach (file($featurePath, FILE_IGNORE_NEW_LINES) ?: [] as $line) {
-            $trimmed = trim($line);
-
-            if (preg_match('/^@tests:\s*$/i', $trimmed)) {
-                $collectingTests = true;
-
-                continue;
+        foreach ((new FeatureParser)->parse($featurePath)->tests as $test) {
+            $path = self::resolvePathInput($test, mustBeFile: true);
+            if ($path !== null) {
+                $paths[] = $path;
             }
-
-            if (! $collectingTests) {
-                continue;
-            }
-
-            if ($trimmed === '') {
-                $collectingTests = false;
-
-                continue;
-            }
-
-            if (preg_match('/^-\s*(.+)$/', $trimmed, $match)) {
-                $path = self::resolvePathInput(trim($match[1]), mustBeFile: true);
-                if ($path !== null) {
-                    $paths[] = $path;
-                }
-
-                continue;
-            }
-
-            $collectingTests = false;
         }
 
         return array_values(array_unique($paths));
@@ -654,162 +659,43 @@ final class FeatureParityChecker
 
     private static function parseFeature(string $path): FeatureDoc
     {
-        $lines = file($path, FILE_IGNORE_NEW_LINES) ?: [];
-        $outlinesByLine = [];
+        return FeatureAdapter::read($path);
+    }
 
-        try {
-            foreach ((new ExampleDatasetResolver)->outlines($path) as $outline) {
-                $outlinesByLine[$outline->line] = $outline;
+    /** @return list<FeatureDoc> */
+    private static function ruleBackgroundFeatures(FeatureDoc $feature): array
+    {
+        $groups = [];
+        foreach ($feature->scenarios as $scenario) {
+            if ($scenario->ruleBackgroundLine === null || isset($groups[$scenario->ruleLine])) {
+                continue;
             }
-        } catch (ExamplesException) {
-            // Example validation remains the responsibility of Gherkish::examples().
+            $group = clone $feature;
+            $group->title = $scenario->rule;
+            $group->backgroundSteps = $scenario->ruleBackgroundSteps;
+            $group->backgroundLine = $scenario->ruleBackgroundLine;
+            $group->scenarios = array_values(array_filter($feature->scenarios, static fn (ScenarioDoc $candidate): bool => $candidate->ruleLine === $scenario->ruleLine));
+            $groups[$scenario->ruleLine] = $group;
         }
 
-        $featureTitle = null;
-        $scenarios = [];
-        $currentScenario = null;
-        $collectingExamples = false;
-        $collectingTests = false;
-        $tests = [];
-        $hasTestsSection = false;
-        $inBackground = false;
-        $backgroundSteps = [];
-        $backgroundLine = null;
+        return array_values($groups);
+    }
 
-        $flushScenario = function () use (&$currentScenario, &$scenarios): void {
-            if ($currentScenario === null) {
-                return;
-            }
+    private static function ruleBackgroundSnapshots(FeatureDoc $feature, array $tests): array
+    {
+        return array_map(static fn (FeatureDoc $group): array => [
+            'rule' => $group->title,
+            'background' => self::backgroundSnapshotPayload($group, $tests),
+        ], self::ruleBackgroundFeatures($feature));
+    }
 
-            $scenarios[] = new ScenarioDoc(
-                $currentScenario['title'],
-                $currentScenario['steps'],
-                $currentScenario['line'] ?? 1,
-                $currentScenario['examples'],
-                $currentScenario['isOutline'],
-            );
-            $currentScenario = null;
-        };
+    private static function scopedFeature(FeatureDoc $feature, ScenarioDoc $scenario): FeatureDoc
+    {
+        $scoped = clone $feature;
+        $scoped->backgroundSteps = array_merge($feature->backgroundSteps, $scenario->ruleBackgroundSteps);
+        $scoped->backgroundLine ??= $scenario->ruleBackgroundLine;
 
-        foreach ($lines as $index => $line) {
-            $lineNumber = $index + 1;
-            $trimmed = trim($line);
-
-            if ($trimmed === '') {
-                $collectingExamples = false;
-                $collectingTests = false;
-
-                continue;
-            }
-
-            if (preg_match('/^Feature:\s*(.+)?$/i', $trimmed, $match)) {
-                if ($featureTitle === null && isset($match[1])) {
-                    $featureTitle = trim($match[1]);
-                }
-
-                $inBackground = false;
-
-                continue;
-            }
-
-            if (preg_match('/^@tests:\s*$/i', $trimmed)) {
-                $collectingTests = true;
-                $hasTestsSection = true;
-
-                continue;
-            }
-
-            if ($collectingTests) {
-                if (preg_match('/^-\s*(.+)$/', $trimmed, $match)) {
-                    $tests[] = trim($match[1]);
-
-                    continue;
-                }
-
-                $collectingTests = false;
-            }
-
-            if (preg_match('/^Background:/i', $trimmed)) {
-                $inBackground = true;
-                $backgroundLine = $lineNumber;
-
-                continue;
-            }
-
-            if (preg_match('/^Scenario(?P<outline> Outline)?:\s*(?P<title>.+)$/i', $trimmed, $match)) {
-                $collectingExamples = false;
-                $flushScenario();
-
-                $examples = [];
-                if (isset($outlinesByLine[$lineNumber])) {
-                    foreach ($outlinesByLine[$lineNumber]->examples as $blockIndex => $block) {
-                        foreach ($block->rows as $row) {
-                            $examples[] = [
-                                'block' => $blockIndex,
-                                'label' => $block->label,
-                                'values' => $row,
-                            ];
-                        }
-                    }
-                }
-
-                $currentScenario = [
-                    'title' => trim($match['title']),
-                    'steps' => [],
-                    'line' => $lineNumber,
-                    'examples' => $examples,
-                    'isOutline' => ($match['outline'] ?? '') !== '',
-                ];
-
-                $inBackground = false;
-
-                continue;
-            }
-
-            if (preg_match('/^Examples?:/i', $trimmed)) {
-                $collectingExamples = true;
-
-                continue;
-            }
-
-            if ($collectingExamples && str_starts_with(ltrim($line), '|')) {
-                continue;
-            }
-
-            if (! preg_match('/^(Given|When|Then|And|But)\b(.*)$/i', ltrim($line), $match)) {
-                continue;
-            }
-
-            if ($inBackground) {
-                $keyword = ucfirst(strtolower($match[1]));
-                $text = trim($match[2]);
-                $backgroundSteps[] = new StepDoc($keyword, $text, $lineNumber);
-
-                continue;
-            }
-
-            if ($currentScenario === null) {
-                continue;
-            }
-
-            $keyword = ucfirst(strtolower($match[1]));
-            $text = trim($match[2]);
-            $currentScenario['steps'][] = new StepDoc($keyword, $text, $lineNumber);
-        }
-
-        $flushScenario();
-
-        return new FeatureDoc(
-            $path,
-            basename($path, '.feature'),
-            dirname($path),
-            $scenarios,
-            $featureTitle,
-            $tests,
-            $hasTestsSection,
-            $backgroundSteps,
-            $backgroundLine,
-        );
+        return $scoped;
     }
 
     private static function assertScenarioParity(FeatureDoc $feature, ScenarioDoc $scenario, ?array $testPaths = null): TestBlock
@@ -1013,6 +899,11 @@ final class FeatureParityChecker
         }
 
         return $arguments;
+    }
+
+    private static function shouldCheckStructure(): bool
+    {
+        return filter_var(getenv('GHERKISH_CHECK_STRUCTURE') ?: false, FILTER_VALIDATE_BOOL);
     }
 
     private static function shouldCheckOutlineDatasets(): bool
@@ -1296,7 +1187,7 @@ final class FeatureParityChecker
         return null;
     }
 
-    private static function parsePestFile(string $path): PestFile
+    public static function parsePestFile(string $path): PestFile
     {
         $content = file_get_contents($path) ?: '';
         $describeScopes = self::extractDescribeScopes($content);
@@ -1464,14 +1355,20 @@ final class FeatureParityChecker
     {
         $featuresByTestPath = [];
         $linkedTestPaths = [];
+        $invalidTestPaths = [];
 
         foreach ($featurePaths as $featurePath) {
+            $invalid = self::shouldCheckStructure() && (new FeatureParser)->parse($featurePath, validate: true)->errors !== [];
             $feature = self::parseFeature($featurePath);
             $testPaths = self::resolveFeatureTestPaths($feature) ?? [self::pairTestPath($feature->path)];
 
             foreach ($testPaths as $testPath) {
                 $testPath = self::canonicalPath($testPath);
-                $featuresByTestPath[$testPath][] = $feature;
+                if ($invalid) {
+                    $invalidTestPaths[$testPath] = true;
+                } else {
+                    $featuresByTestPath[$testPath][] = $feature;
+                }
                 $linkedTestPaths[] = $testPath;
             }
         }
@@ -1479,6 +1376,9 @@ final class FeatureParityChecker
         foreach (self::selectedPestTestPaths($linkedTestPaths) as $testPath) {
             $features = $featuresByTestPath[self::canonicalPath($testPath)] ?? [];
 
+            if (isset($invalidTestPaths[self::canonicalPath($testPath)])) {
+                continue;
+            }
             foreach (self::parsePestFile($testPath)->tests as $test) {
                 if ($test->ignoreMapping || self::testMatchesFeatureScenario($test, $features)) {
                     continue;
@@ -1713,7 +1613,7 @@ final class FeatureParityChecker
                 continue;
             }
 
-            if (! preg_match('/@(Given|When|Then|And|But)\s+(?P<body>.*)/is', $docBody, $stepMatch)) {
+            if (! preg_match('/@(Given|When|Then|And|But|\*)\s+(?P<body>.*)/is', $docBody, $stepMatch)) {
                 continue;
             }
 

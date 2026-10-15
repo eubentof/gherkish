@@ -22,6 +22,7 @@ final class FeatureParityResult
         public array $cases = [],
         public array $unmappedTests = [],
         public array $backgrounds = [],
+        public array $structureErrors = [],
     ) {}
 
     public function addSuccess(
@@ -107,6 +108,6 @@ final class FeatureParityResult
 
     public function hasErrors(): bool
     {
-        return $this->errors !== [];
+        return $this->errors !== [] || $this->structureErrors !== [];
     }
 }

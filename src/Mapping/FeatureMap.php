@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Gherkish\Mapping;
 
 use Gherkish\Examples\ExamplesException;
+use Gherkish\Gherkin\FeatureParser;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 
@@ -80,17 +81,13 @@ final class FeatureMap
     /** @return list<string> */
     public function declaredTests(string $featurePath, bool $strict = true): array
     {
-        preg_match_all('/^\h*@tests:\h*\R((?:\h*-\h*[^\r\n]+\R?)+)/mi', file_get_contents($featurePath), $sections);
         $paths = [];
-        foreach ($sections[1] as $section) {
-            preg_match_all('/^\h*-\h*(.+)$/m', $section, $matches);
-            foreach ($matches[1] as $path) {
-                try {
-                    $paths[] = $this->existing(trim($path), '.php');
-                } catch (ExamplesException $exception) {
-                    if ($strict) {
-                        throw $exception;
-                    }
+        foreach ((new FeatureParser)->parse($featurePath)->tests as $path) {
+            try {
+                $paths[] = $this->existing($path, '.php');
+            } catch (ExamplesException $exception) {
+                if ($strict) {
+                    throw $exception;
                 }
             }
         }
@@ -133,7 +130,7 @@ final class FeatureMap
         $annotations = [];
         foreach ($this->files('.feature') as $feature) {
             $mapping[$feature] = $this->declaredTests($feature);
-            if (! preg_match('/^\h*@tests:/mi', file_get_contents($feature))) {
+            if ((new FeatureParser)->parse($feature)->mappingLines === []) {
                 $sibling = preg_replace('/\.feature$/', 'Test.php', $feature);
                 if (is_file($sibling)) {
                     $mapping[$feature][] = realpath($sibling);
@@ -164,16 +161,30 @@ final class FeatureMap
             foreach ($tests as $test) {
                 $section .= '  - '.$this->relative($test).$newline;
             }
-            // Consolidate existing sections while preserving the feature description.
-            $updated = preg_replace('/^\h*@tests:\h*(?:\R|$)(?:\h*-\h*[^\r\n]+(?:\R|$))*/mi', '', $content);
-            if (preg_match('/^\h*(?:Background|Scenario(?: Outline)?):/mi', $updated, $match, PREG_OFFSET_CAPTURE)) {
-                $offset = $match[0][1];
-                $updated = substr($updated, 0, $offset).$section.$newline.substr($updated, $offset);
-            } else {
+            $document = (new FeatureParser)->parse($feature);
+            $lines = preg_split('/\r\n|\r|\n/', $content);
+            // Insert before the first child's tags as well as its keyword.
+            $child = $document->feature?->children[0] ?? null;
+            $insertLine = $child === null ? count($lines) + 1 : $child->line;
+            foreach ($child?->tags ?? [] as $tag) {
+                $insertLine = min($insertLine, $tag['line']);
+            }
+            $updatedLines = [];
+            foreach ($lines as $index => $line) {
+                if ($index + 1 === $insertLine) {
+                    $updatedLines[] = rtrim($section, "\r\n");
+                    $updatedLines[] = '';
+                }
+                if (! in_array($index + 1, $document->mappingLines, true)) {
+                    $updatedLines[] = $line;
+                }
+            }
+            $updated = implode($newline, $updatedLines);
+            if ($child === null) {
                 $updated = rtrim($updated).$newline.$newline.$section;
             }
             // Keep an already synchronized section in its original position.
-            if ($this->declaredTests($feature) !== $tests || ! preg_match('/^\h*@tests:/mi', $content)) {
+            if ($this->declaredTests($feature) !== $tests || $document->mappingLines === []) {
                 $changes[$feature] = $updated;
             }
         }

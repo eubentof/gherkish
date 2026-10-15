@@ -20,6 +20,7 @@ class CheckFeaturesCommand extends Command
         .'{--o|outlined : Validate Scenario Outline datasets against their Examples tables}'
         .'{--u|unmapped : Validate that every Pest test maps to a Gherkin scenario}'
         .'{--p|phased : Require every Scenario and Scenario Outline to contain Given, When, and Then phases}'
+        .'{--structure : Validate English Gherkin syntax and feature structure}'
         .'{--l|long : Show every scenario, step, and Examples table}'
         .'{--snapshot= : Write the coverage snapshot JSON to the given path}';
 
@@ -80,7 +81,7 @@ class CheckFeaturesCommand extends Command
 
     private function captureEnvState(): void
     {
-        foreach (['GHERKISH_DIR', 'GHERKISH_FILE', 'GHERKISH_FEATURE', 'GHERKISH_CHECK_OUTLINE_DATASETS', 'GHERKISH_CHECK_UNMAPPED_TESTS', 'GHERKISH_STRICT', 'GHERKISH_SNAPSHOT'] as $key) {
+        foreach (['GHERKISH_DIR', 'GHERKISH_FILE', 'GHERKISH_FEATURE', 'GHERKISH_CHECK_OUTLINE_DATASETS', 'GHERKISH_CHECK_UNMAPPED_TESTS', 'GHERKISH_STRICT', 'GHERKISH_CHECK_STRUCTURE', 'GHERKISH_SNAPSHOT'] as $key) {
             $value = getenv($key);
             $this->envBackup[$key] = $value === false ? null : $value;
         }
@@ -121,6 +122,10 @@ class CheckFeaturesCommand extends Command
             $this->setEnv('GHERKISH_STRICT', '1');
         }
 
+        if ($this->option('structure')) {
+            $this->setEnv('GHERKISH_CHECK_STRUCTURE', '1');
+        }
+
         $snapshot = $this->option('snapshot');
         if (is_string($snapshot) && $snapshot !== '') {
             $this->setEnv('GHERKISH_SNAPSHOT', $snapshot);
@@ -159,6 +164,10 @@ class CheckFeaturesCommand extends Command
 
     private function renderResult(FeatureParityResult $result, float $duration): void
     {
+        foreach ($result->structureErrors as $error) {
+            $this->error($this->escape(sprintf('INVALID %s:%d:%d [%s]', $error['path'], $error['line'], $error['column'], $error['code'])));
+            $this->line($this->escape($error['message']));
+        }
         if ($this->option('long')) {
             $this->renderDescriptiveResult($result);
         } else {
@@ -294,6 +303,9 @@ class CheckFeaturesCommand extends Command
     private function renderSummary(FeatureParityResult $result, float $duration): void
     {
         $parts = [];
+        if ($result->structureErrors !== []) {
+            $this->line(sprintf('  <options=bold>Structure:</>  <fg=red>%d errors</>', count($result->structureErrors)));
+        }
         $failed = count($result->errors) - count($result->unmappedTests);
         $covered = count($result->successes);
         $skipped = count($result->skipped);

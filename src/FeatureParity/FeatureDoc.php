@@ -20,5 +20,6 @@ final class FeatureDoc
         public bool $hasTestsSection,
         public array $backgroundSteps = [],
         public ?int $backgroundLine = null,
+        public array $rules = [],
     ) {}
 }

@@ -16,5 +16,9 @@ final class ScenarioDoc
         public int $line,
         public array $examples = [],
         public bool $isOutline = false,
+        public ?string $rule = null,
+        public ?int $ruleLine = null,
+        public array $ruleBackgroundSteps = [],
+        public ?int $ruleBackgroundLine = null,
     ) {}
 }

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Gherkish\Examples;
 
+use Gherkish\Gherkin\FeatureParser;
+use Gherkish\Gherkin\Table;
 use Gherkish\Mapping\FeatureMap;
 
 final class ExampleDatasetResolver
@@ -121,158 +123,36 @@ final class ExampleDatasetResolver
      */
     public function outlines(string $featurePath): array
     {
-        $lines = file($featurePath, FILE_IGNORE_NEW_LINES) ?: [];
+        $document = (new FeatureParser)->parse($featurePath);
         $outlines = [];
-        $current = null;
-        $currentBlock = null;
-
-        $flushBlock = function () use (&$current, &$currentBlock, $featurePath): void {
-            if ($current === null || $currentBlock === null) {
-                return;
-            }
-
-            if ($currentBlock['headers'] === null) {
-                throw new ExamplesException(sprintf(
-                    'Examples block at %s:%d has no table.',
-                    $featurePath,
-                    $currentBlock['line'],
-                ));
-            }
-
-            $current['examples'][] = new ExampleBlock(
-                $currentBlock['label'],
-                $currentBlock['rows'],
-                $currentBlock['line'],
-            );
-            $currentBlock = null;
-        };
-
-        $flushOutline = function () use (&$current, &$outlines, $flushBlock): void {
-            $flushBlock();
-            if ($current === null) {
-                return;
-            }
-
-            $outlines[] = new ScenarioOutline($current['title'], $current['examples'], $current['line']);
-            $current = null;
-        };
-
-        foreach ($lines as $index => $line) {
-            $lineNumber = $index + 1;
-            $trimmed = trim($line);
-
-            if (preg_match('/^Scenario Outline:\s*(.+)$/i', $trimmed, $match)) {
-                $flushOutline();
-                $current = ['title' => trim($match[1]), 'examples' => [], 'line' => $lineNumber];
-
+        foreach ($document->scenarios as $scenario) {
+            if ($scenario->kind !== 'outline') {
                 continue;
             }
-
-            if (preg_match('/^Scenario:\s*/i', $trimmed)) {
-                $flushOutline();
-
-                continue;
-            }
-
-            if ($current !== null && preg_match('/^Examples?:\s*(.*)$/i', $trimmed, $match)) {
-                $flushBlock();
-                $blockLabel = trim($match[1]);
-                $currentBlock = [
-                    'label' => $blockLabel === '' ? null : $blockLabel,
-                    'headers' => null,
-                    'rows' => [],
-                    'line' => $lineNumber,
-                ];
-
-                continue;
-            }
-
-            if ($currentBlock === null || ! str_starts_with($trimmed, '|')) {
-                continue;
-            }
-
-            $cells = $this->parseTableRow($trimmed);
-            if ($currentBlock['headers'] === null) {
-                if ($cells === [] || count($cells) !== count(array_unique($cells)) || in_array('', $cells, true)) {
-                    throw new ExamplesException(sprintf(
-                        'Examples header at %s:%d must contain unique, non-empty column names.',
-                        $featurePath,
-                        $lineNumber,
-                    ));
+            $blocks = [];
+            foreach ($scenario->children as $block) {
+                if ($block->table === null) {
+                    throw new ExamplesException(sprintf('Examples block at %s:%d has no table.', $featurePath, $block->line));
                 }
-
-                $currentBlock['headers'] = $cells;
-
-                continue;
+                $rows = $block->table->rows;
+                $headers = $rows[0];
+                if ($headers === [] || count($headers) !== count(array_unique($headers)) || in_array('', $headers, true)) {
+                    throw new ExamplesException(sprintf('Examples header at %s:%d must contain unique, non-empty column names.', $featurePath, $block->table->line));
+                }
+                foreach (array_slice($rows, 1) as $index => $row) {
+                    if (count($row) !== count($headers)) {
+                        throw new ExamplesException(sprintf('Examples row at %s:%d has %d cells; expected %d.', $featurePath, $block->table->rowLines[$index + 1], count($row), count($headers)));
+                    }
+                }
+                $blocks[] = new ExampleBlock($block->name === '' ? null : $block->name, Table::associative($rows), $block->line);
             }
-
-            if (count($cells) !== count($currentBlock['headers'])) {
-                throw new ExamplesException(sprintf(
-                    'Examples row at %s:%d has %d cells; expected %d.',
-                    $featurePath,
-                    $lineNumber,
-                    count($cells),
-                    count($currentBlock['headers']),
-                ));
-            }
-
-            $currentBlock['rows'][] = array_combine($currentBlock['headers'], $cells);
+            $outlines[] = new ScenarioOutline($scenario->name, $blocks, $scenario->line);
         }
-
-        $flushOutline();
 
         return $outlines;
     }
 
-    /**
-     * @return list<string>
-     */
-    private function parseTableRow(string $line): array
-    {
-        $cells = [];
-        $cell = '';
-        $escaped = false;
-
-        foreach (str_split(trim($line)) as $index => $character) {
-            if ($index === 0 && $character === '|') {
-                continue;
-            }
-
-            if ($escaped) {
-                $cell .= in_array($character, ['|', '\\'], true) ? $character : '\\'.$character;
-                $escaped = false;
-
-                continue;
-            }
-
-            if ($character === '\\') {
-                $escaped = true;
-
-                continue;
-            }
-
-            if ($character === '|') {
-                $cells[] = trim($cell);
-                $cell = '';
-
-                continue;
-            }
-
-            $cell .= $character;
-        }
-
-        if ($escaped) {
-            $cell .= '\\';
-        }
-
-        if ($cell !== '') {
-            $cells[] = trim($cell);
-        }
-
-        return $cells;
-    }
-
-    private function testNameAtLine(string $testPath, int $callLine): ?string
+    public function testNameAtLine(string $testPath, int $callLine): ?string
     {
         $content = file_get_contents($testPath);
         if ($content === false) {
@@ -357,7 +237,7 @@ final class ExampleDatasetResolver
         return $length - 1;
     }
 
-    private function namesMatch(string $scenarioTitle, string $testName): bool
+    public function namesMatch(string $scenarioTitle, string $testName): bool
     {
         $scenario = strtolower(trim(preg_replace('/\s+/', ' ', $scenarioTitle) ?? $scenarioTitle));
         $test = strtolower(trim(preg_replace('/\s+/', ' ', $testName) ?? $testName));
